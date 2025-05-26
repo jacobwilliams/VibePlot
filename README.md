@@ -2,7 +2,7 @@ Vibe coding 3D spacecraft trajectory graphics.
 
 ### Example:
 
-![example](media/example.webm)
+![example](media/example2.mp4)
 
 
 ### To run:
