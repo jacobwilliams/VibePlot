@@ -2,10 +2,10 @@ Vibe coding 3D spacecraft trajectory graphics.
 
 ### Example:
 
-![example](media/example2.mp4)
+![example](media/example.gif)
 
 
-### To run:
+### To run (using pixi):
 
 ```
 pixi shell --manifest-path ./env/pixi.toml
