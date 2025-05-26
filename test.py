@@ -7,10 +7,13 @@ import random
 from panda3d.core import loadPrcFileData
 from panda3d.core import LineSegs, NodePath
 from panda3d.core import TextNode
-from panda3d.core import GeomVertexFormat, GeomVertexData, Geom, GeomNode, GeomTriangles, GeomVertexWriter, GeomVertexRewriter, GeomLinestrips, Vec3, Vec4
+from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode, GeomTriangles, GeomVertexWriter, GeomVertexRewriter, GeomLinestrips, Vec3, Vec4
+# from panda3d.physics import *
+from panda3d.core import CardMaker, TransparencyAttrib
 
 from direct.gui.OnscreenText import OnscreenText
 import datetime
+from direct.particles.ParticleEffect import ParticleEffect
 
 loadPrcFileData('', 'framebuffer-multisample 1')
 loadPrcFileData('', 'multisamples 4')
@@ -21,6 +24,15 @@ class EarthOrbitApp(ShowBase):
         super().__init__()
 
         # self.accept("mouse1-double", self.recenter_on_earth)  # doesn't work?
+        self.accept("space", self.recenter_on_earth)
+
+        # inertia:
+        # self.last_mouse_pos = None
+        # self.angular_velocity = 0.0
+        # self.inertia_axis = LVector3(0, 0, 1)
+        # self.accept("mouse1", self.on_mouse_down)
+        # self.accept("mouse1-up", self.on_mouse_up)
+        # self.inertia_task = None
 
         self.hud_text = OnscreenText(
             text="Frame: 0",
@@ -51,7 +63,9 @@ class EarthOrbitApp(ShowBase):
         self.stars.setLightOff()
         self.stars.setCompass()  # Keep stars stationary relative to camera
 
-        star_tex = self.loader.loadTexture("models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg")
+        # star_tex = self.loader.loadTexture("models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg")
+        star_tex = self.loader.loadTexture("models/2k_stars.jpg")
+
         self.stars.setTexture(star_tex, 1)
 
         # Load the Earth sphere
@@ -111,6 +125,48 @@ class EarthOrbitApp(ShowBase):
 
         grid_np = self.earth.attachNewNode(grid.create())
 
+
+
+        # --- Equatorial plane (square, translucent) ---
+        plane_size = 4.0  # Half-width of the square plane
+        plane_color = (0.2, 0.6, 1.0, 0.18)  # RGBA, mostly transparent blue
+
+        # Create the plane
+        cm = CardMaker("equatorial_plane")
+        cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
+        plane_np = self.render.attachNewNode(cm.generate())
+        plane_np.setPos(0, 0, 0)
+        plane_np.setHpr(0, -90, 0)  # Rotate from XZ to XY plane
+        plane_np.setTransparency(TransparencyAttrib.MAlpha)
+        plane_np.setColor(*plane_color)
+
+        # --- Gridlines on the plane ---
+        gridlines = LineSegs()
+        gridlines.setThickness(1.0)
+        grid_color = (0.5, 0.8, 1.0, 0.35)  # Slightly more visible
+
+        num_lines = 9  # Number of gridlines per axis
+        step = (2 * plane_size) / (num_lines - 1)
+        z = 0  # Equatorial plane at z=0
+
+        # Vertical lines (constant x)
+        for i in range(num_lines):
+            x = -plane_size + i * step
+            gridlines.setColor(*grid_color)
+            gridlines.moveTo(x, -plane_size, z)
+            gridlines.drawTo(x, plane_size, z)
+
+        # Horizontal lines (constant y)
+        for i in range(num_lines):
+            y = -plane_size + i * step
+            gridlines.setColor(*grid_color)
+            gridlines.moveTo(-plane_size, y, z)
+            gridlines.drawTo(plane_size, y, z)
+
+        grid_np = self.render.attachNewNode(gridlines.create())
+        grid_np.setTransparency(TransparencyAttrib.MAlpha)
+
+
         # Lighting
         ambient = AmbientLight("ambient")
         ambient.setColor((0.2, 0.2, 0.2, 1))
@@ -129,10 +185,19 @@ class EarthOrbitApp(ShowBase):
 
 
         # Add a small sphere as the satellite
+        # self.satellite = self.loader.loadModel("models/planet_sphere")
+        # self.satellite.setScale(0.1, 0.1, 0.1)
+        # self.satellite.setColor(1, 0, 0, 1)
+        # self.satellite.reparentTo(self.render)
         self.satellite = self.loader.loadModel("models/planet_sphere")
-        self.satellite.setScale(0.2, 0.2, 0.2)
+        # self.satellite = self.loader.loadModel("models/teapot")
+        self.satellite.setScale(0.1, 0.1, 0.1)
         self.satellite.setColor(1, 0, 0, 1)
         self.satellite.reparentTo(self.render)
+
+        self.groundtrack_trace = []
+        self.groundtrack_length = 1000  # Number of points to keep in the groundtrack
+        self.groundtrack_node = self.earth.attachNewNode("groundtrack")
 
         # --- Visibility cone setup ---
         self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
@@ -140,27 +205,31 @@ class EarthOrbitApp(ShowBase):
         self.visibility_cone_segments = 24  # smoothness of the cone
 
         # Draw the orbit path
-        orbit_segs = LineSegs()
-        orbit_segs.setThickness(2.0)
-        orbit_segs.setColor(1, 1, 0, 1)  # Yellow
+        self.orbit_segs = LineSegs()
+        self.orbit_segs.setThickness(2.0)
+        self.orbit_segs.setColor(1, 1, 0, 1)  # Yellow
 
         num_segments = 100
-        inclination = math.radians(45)  # 45 degree inclination
+        inclination = math.radians(45)
         for i in range(num_segments + 1):
             angle = 2 * math.pi * i / num_segments
             x = self.orbit_radius * math.cos(angle)
             y = self.orbit_radius * math.sin(angle)
             z = 0
-            # Rotate around X axis for inclination
             y_incl = y * math.cos(inclination) - z * math.sin(inclination)
             z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-            orbit_segs.drawTo(x, y_incl, z_incl)
+            self.orbit_segs.drawTo(x, y_incl, z_incl)
 
-        orbit_np = NodePath(orbit_segs.create())
-        orbit_np.reparentTo(self.render)
+        self.orbit_np = NodePath(self.orbit_segs.create())
+        self.orbit_np.reparentTo(self.render)
 
         self.taskMgr.add(self.orbit_task, "OrbitTask")
         self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
+        # to pulsate the orbit line:
+        # self.taskMgr.add(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
+
+        self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
+        self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
 
         # #--------------------------------------------
         # # Draw Earth-fixed coordinate axes (origin at Earth's center)
@@ -272,8 +341,10 @@ class EarthOrbitApp(ShowBase):
         # --- Example particles ---
         self.particles = []
         self.particle_params = []
+        self.particle_labels = []
         num_particles = 100
         particle_radius = 0.03
+        idx = 0
         for _ in range(num_particles):
             # Random orbital parameters
             r = random.uniform(2.2, 4.0)
@@ -286,6 +357,30 @@ class EarthOrbitApp(ShowBase):
             particle.reparentTo(self.render)
             self.particles.append(particle)
             self.particle_params.append((r, inclination, angle0, speed))
+
+            # labels:   .. this doesn't seem to work at all?
+            idx = idx + 1
+            label_text = f"S{idx+1}"  # Or any string you want
+            text_node = TextNode(f"label{idx}")
+            text_node.setText(label_text)
+            text_node.setAlign(TextNode.ACenter)
+            text_node.setTextColor(1, 1, 1, 1)
+            # text_node.setCardColor(0, 0, 0, 0.5)  # Optional: background for contrast
+            text_node.setCardColor(1, 1, 1, 0.5)  # Opaque white background
+            text_node.setCardAsMargin(0.1, 0.1, 0.05, 0.05)
+            text_node.setCardDecal(True)
+            text_np = particle.attachNewNode(text_node)
+            # text_np.setScale(1.0)
+            # text_np.setScale(0.3 * self.earth.getScale().x)  # Make text larger
+            # # text_np.setPos(0, 0, 0.15)  # Offset above the particle
+            # text_np.setPos(0, 0, 0.15 * self.earth.getScale().x)
+            text_np.setScale(1.0 * self.earth.getScale().x)  # Try 0.5 or even 1.0 for testing
+            text_np.setPos(0, 0, 0.3 * self.earth.getScale().x)  # Raise it higher above the particle
+            text_np.setTransparency(True)
+            text_np.setBin('fixed', 0)
+            self.particle_labels.append(text_np)
+
+
 
         # --- Connect some particles with lines ---
         self.connect_count = 5  # Number of particles to connect
@@ -304,7 +399,7 @@ class EarthOrbitApp(ShowBase):
         self.lines_np.reparentTo(self.render)
 
         # Trace settings
-        self.trace_length = 20  # Number of points in the trace
+        self.trace_length = 30  # Number of points in the trace
         self.particle_traces = [[particle.getPos()] * self.trace_length for particle in self.particles]
         self.trace_nodes = [self.render.attachNewNode("trace") for _ in self.particles]
 
@@ -317,6 +412,50 @@ class EarthOrbitApp(ShowBase):
     #     self.trackball.node().setOrigin(Point3(0, 20, 0))
     #     self.camera.setPos(0, 0, 0)
     #     self.camera.lookAt(0, 20, 0)
+
+    ####################
+    #---- try to have inertia spin on mouse drag.... not quite what i want but a start ....
+    # def on_mouse_down(self):
+    #     self.last_mouse_pos = self.win.getPointer(0).getX(), self.win.getPointer(0).getY()
+    #     self.angular_velocity = 0.0
+    #     if self.inertia_task:
+    #         self.taskMgr.remove(self.inertia_task)
+    #         self.inertia_task = None
+
+    # def on_mouse_up(self):
+    #     # Calculate velocity based on last drag
+    #     if self.last_mouse_pos is not None:
+    #         x, y = self.win.getPointer(0).getX(), self.win.getPointer(0).getY()
+    #         dx = x - self.last_mouse_pos[0]
+    #         dy = y - self.last_mouse_pos[1]
+    #         self.angular_velocity = math.sqrt(dx*dx + dy*dy) * 0.01  # Tune this factor
+    #         if self.angular_velocity > 0.01:
+    #             self.inertia_axis = LVector3(-dy, dx, 0)
+    #             self.inertia_axis.normalize()
+    #             self.inertia_task = self.taskMgr.add(self.inertia_spin_task, "InertiaSpinTask")
+
+    # def inertia_spin_task(self, task):
+    #     if self.angular_velocity > 0.001:
+    #         # Rotate the camera or trackball
+    #         self.trackball.node().setHpr(
+    #             self.trackball.node().getH() + self.angular_velocity * self.inertia_axis.getX(),
+    #             self.trackball.node().getP() + self.angular_velocity * self.inertia_axis.getY(),
+    #             self.trackball.node().getR()
+    #         )
+    #         self.angular_velocity *= 0.96  # Damping factor
+    #         return Task.cont
+    #     else:
+    #         self.angular_velocity = 0.0
+    #         return Task.done
+    ####################
+
+    def recenter_on_earth(self):
+        # Reset camera and trackball to look at Earth's center
+        self.trackball.node().setHpr(0, 0, 0)
+        self.trackball.node().setPos(0, 20, 0)
+        self.trackball.node().setOrigin(Point3(0, 0, 0))
+        self.camera.setPos(0, -20, 0)
+        self.camera.lookAt(0, 0, 0)
 
     # def orbit_task(self, task):
     #     angle = task.time * self.orbit_speed
@@ -417,6 +556,31 @@ class EarthOrbitApp(ShowBase):
         self.cone_outline_np = self.render.attachNewNode(outline.create())
         self.cone_outline_np.setTransparency(True)
 
+
+        # Project satellite position onto Earth's surface
+        sat_vec = sat_pos - Point3(0, 0, 0)
+        if sat_vec.length() != 0:
+            ground_point = sat_vec.normalized() * self.earth.getScale().x
+            # Convert to Earth's local coordinates
+            ground_point_local = self.earth.getRelativePoint(self.render, ground_point)
+            self.groundtrack_trace.append(ground_point_local)
+            # uncomment to make it a trace:
+            if len(self.groundtrack_trace) > self.groundtrack_length:
+               self.groundtrack_trace.pop(0)
+            # Draw the groundtrack
+            self.groundtrack_node.node().removeAllChildren()
+            segs = LineSegs()
+            segs.setThickness(2.0)
+            segs.setColor(1, 0.5, 0, 1)  # Orange
+            for i, pt in enumerate(self.groundtrack_trace):
+                alpha = i / self.groundtrack_length  # Fades from 0 to 1
+                segs.setColor(alpha, alpha, 0, alpha)
+                if i == 0:
+                    segs.moveTo(pt)
+                else:
+                    segs.drawTo(pt)
+            self.groundtrack_node.attachNewNode(segs.create())
+
         return Task.cont
 
     def rotate_earth_task(self, task):
@@ -467,6 +631,9 @@ class EarthOrbitApp(ShowBase):
                 segs.drawTo(trace[j])
             self.trace_nodes[i] = self.render.attachNewNode(segs.create())
 
+            # Make label face the camera
+            self.particle_labels[i].lookAt(self.camera)
+
         # (existing code for connecting lines...)
         self.particle_lines = LineSegs()
         self.particle_lines.setThickness(1.5)
@@ -482,6 +649,110 @@ class EarthOrbitApp(ShowBase):
         self.lines_np.reparentTo(self.render)
 
         return Task.cont
+
+    def pulsate_orbit_line_task(self, task):
+        # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0
+        t = task.time
+        thickness = 2.0 + 6.0 * (0.5 + 0.5 * math.sin(t * 2.0))  # Pulsate every ~3 seconds
+        brightness = 1.0 #0.5 + 0.5 * math.sin(t * 2.0)
+        color = (brightness, brightness, 0, 1)
+
+        # Re-create the orbit line with new thickness/color
+        self.orbit_segs = LineSegs()
+        self.orbit_segs.setThickness(thickness)
+        self.orbit_segs.setColor(*color)
+
+        num_segments = 100
+        inclination = math.radians(45)
+        for i in range(num_segments + 1):
+            angle = 2 * math.pi * i / num_segments
+            x = self.orbit_radius * math.cos(angle)
+            y = self.orbit_radius * math.sin(angle)
+            z = 0
+            y_incl = y * math.cos(inclination) - z * math.sin(inclination)
+            z_incl = y * math.sin(inclination) + z * math.cos(inclination)
+            if i == 0:
+                self.orbit_segs.moveTo(x, y_incl, z_incl)
+            else:
+                self.orbit_segs.drawTo(x, y_incl, z_incl)
+
+        self.orbit_np.removeNode()
+        self.orbit_np = NodePath(self.orbit_segs.create())
+        self.orbit_np.reparentTo(self.render)
+        return Task.cont
+
+    def add_orbit_tube(self, radius=3.0, inclination_deg=20, tube_radius=0.07, num_segments=100, num_sides=12, eccentricity=0.0):
+        inclination = math.radians(inclination_deg)
+        a = radius
+        e = eccentricity
+        b = a * math.sqrt(1 - e * e)
+        # Prepare vertex data
+        format = GeomVertexFormat.getV3n3c4()
+        vdata = GeomVertexData('tube', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color = GeomVertexWriter(vdata, 'color')
+
+        verts = []
+        for i in range(num_segments + 1):
+            angle = 2 * math.pi * i / num_segments
+            # Elliptical orbit, centered at focus
+            x = a * math.cos(angle) - a * e
+            y = b * math.sin(angle)
+            z = 0
+            # Incline orbit
+            y_incl = y * math.cos(inclination) - z * math.sin(inclination)
+            z_incl = y * math.sin(inclination) + z * math.cos(inclination)
+            center = Vec3(x, y_incl, z_incl)
+
+            # Tangent vector (direction of orbit)
+            next_angle = 2 * math.pi * ((i+1)%num_segments) / num_segments
+            x2 = a * math.cos(next_angle) - a * e
+            y2 = b * math.sin(next_angle)
+            z2 = 0
+            y2_incl = y2 * math.cos(inclination) - z2 * math.sin(inclination)
+            z2_incl = y2 * math.sin(inclination) + z2 * math.cos(inclination)
+            next_center = Vec3(x2, y2_incl, z2_incl)
+            tangent = (next_center - center).normalized()
+
+            # Find a vector perpendicular to tangent
+            up = Vec3(0, 0, 1)
+            if abs(tangent.dot(up)) > 0.99:
+                up = Vec3(1, 0, 0)
+            side = tangent.cross(up).normalized()
+            up = side.cross(tangent).normalized()
+
+            ring = []
+            for j in range(num_sides):
+                theta = 2 * math.pi * j / num_sides
+                offset = side * math.cos(theta) * tube_radius + up * math.sin(theta) * tube_radius
+                pos = center + offset
+                vertex.addData3(pos)
+                normal.addData3(offset.normalized())
+                color.addData4(0, 1, 1, 1)  # Cyan tube
+                ring.append(i * num_sides + j)
+            verts.append(ring)
+
+        # Build triangles
+        tris = GeomTriangles(Geom.UHStatic)
+        for i in range(num_segments):
+            for j in range(num_sides):
+                a_idx = i * num_sides + j
+                b_idx = i * num_sides + (j + 1) % num_sides
+                c_idx = (i + 1) * num_sides + j
+                d_idx = (i + 1) * num_sides + (j + 1) % num_sides
+                tris.addVertices(a_idx, b_idx, c_idx)
+                tris.addVertices(b_idx, d_idx, c_idx)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('orbit_tube')
+        node.addGeom(geom)
+        tube_np = self.render.attachNewNode(node)
+        tube_np.setTransparency(True)
+        tube_np.setTwoSided(True)
+        tube_np.setBin('opaque', 10)
+        return tube_np
 
 app = EarthOrbitApp()
 app.run()
