@@ -79,6 +79,13 @@ class EarthOrbitApp(ShowBase):
         tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
         self.earth.setTexture(tex, 1)
 
+        if False:
+            self.radiation_belt_np = self.add_radiation_belt(
+                inner_radius=2.3,  # just outside Earth (Earth radius is 2)
+                outer_radius=3.2,  # adjust for thickness
+                belt_color=(0.2, 1, 0.2, 0.18)  # greenish, translucent
+            )
+
         # Add the Moon
         self.moon = self.loader.loadModel("models/planet_sphere")
         self.moon.reparentTo(self.render)
@@ -160,45 +167,39 @@ class EarthOrbitApp(ShowBase):
         grid_np = self.earth.attachNewNode(grid.create())
 
 
-
-        # --- Equatorial plane (square, translucent) ---
-        plane_size = 4.0  # Half-width of the square plane
-        plane_color = (0.2, 0.6, 1.0, 0.18)  # RGBA, mostly transparent blue
-
-        # Create the plane
-        cm = CardMaker("equatorial_plane")
-        cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
-        plane_np = self.render.attachNewNode(cm.generate())
-        plane_np.setPos(0, 0, 0)
-        plane_np.setHpr(0, -90, 0)  # Rotate from XZ to XY plane
-        plane_np.setTransparency(TransparencyAttrib.MAlpha)
-        plane_np.setColor(*plane_color)
-
-        # --- Gridlines on the plane ---
-        gridlines = LineSegs()
-        gridlines.setThickness(1.0)
-        grid_color = (0.5, 0.8, 1.0, 0.35)  # Slightly more visible
-
-        num_lines = 9  # Number of gridlines per axis
-        step = (2 * plane_size) / (num_lines - 1)
-        z = 0  # Equatorial plane at z=0
-
-        # Vertical lines (constant x)
-        for i in range(num_lines):
-            x = -plane_size + i * step
-            gridlines.setColor(*grid_color)
-            gridlines.moveTo(x, -plane_size, z)
-            gridlines.drawTo(x, plane_size, z)
-
-        # Horizontal lines (constant y)
-        for i in range(num_lines):
-            y = -plane_size + i * step
-            gridlines.setColor(*grid_color)
-            gridlines.moveTo(-plane_size, y, z)
-            gridlines.drawTo(plane_size, y, z)
-
-        grid_np = self.render.attachNewNode(gridlines.create())
-        grid_np.setTransparency(TransparencyAttrib.MAlpha)
+        if False:
+            # --- Equatorial plane (square, translucent) ---
+            plane_size = 4.0  # Half-width of the square plane
+            plane_color = (0.2, 0.6, 1.0, 0.18)  # RGBA, mostly transparent blue
+            # Create the plane
+            cm = CardMaker("equatorial_plane")
+            cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
+            plane_np = self.render.attachNewNode(cm.generate())
+            plane_np.setPos(0, 0, 0)
+            plane_np.setHpr(0, -90, 0)  # Rotate from XZ to XY plane
+            plane_np.setTransparency(TransparencyAttrib.MAlpha)
+            plane_np.setColor(*plane_color)
+            # --- Gridlines on the plane ---
+            gridlines = LineSegs()
+            gridlines.setThickness(1.0)
+            grid_color = (0.5, 0.8, 1.0, 0.35)  # Slightly more visible
+            num_lines = 9  # Number of gridlines per axis
+            step = (2 * plane_size) / (num_lines - 1)
+            z = 0  # Equatorial plane at z=0
+            # Vertical lines (constant x)
+            for i in range(num_lines):
+                x = -plane_size + i * step
+                gridlines.setColor(*grid_color)
+                gridlines.moveTo(x, -plane_size, z)
+                gridlines.drawTo(x, plane_size, z)
+            # Horizontal lines (constant y)
+            for i in range(num_lines):
+                y = -plane_size + i * step
+                gridlines.setColor(*grid_color)
+                gridlines.moveTo(-plane_size, y, z)
+                gridlines.drawTo(plane_size, y, z)
+            grid_np = self.render.attachNewNode(gridlines.create())
+            grid_np.setTransparency(TransparencyAttrib.MAlpha)
 
 
         # Lighting
@@ -1022,6 +1023,56 @@ class EarthOrbitApp(ShowBase):
         # moon_orbit_np = self.render.attachNewNode(moon_orbit.create())
 
         return Task.cont
+
+    def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
+        """Draw a translucent torus (belt) around the Earth."""
+
+        format = GeomVertexFormat.getV3n3c4()
+        vdata = GeomVertexData('belt', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color = GeomVertexWriter(vdata, 'color')
+
+        verts = []
+        major_radius = (inner_radius + outer_radius) / 2
+        minor_radius = (outer_radius - inner_radius) / 2
+
+        for i in range(num_major + 1):
+            phi = 2 * math.pi * i / num_major
+            center = Vec3(major_radius * math.cos(phi), major_radius * math.sin(phi), 0)
+            for j in range(num_minor + 1):
+                theta = 2 * math.pi * j / num_minor
+                # Local circle in XZ plane
+                x = (major_radius + minor_radius * math.cos(theta)) * math.cos(phi)
+                y = (major_radius + minor_radius * math.cos(theta)) * math.sin(phi)
+                z = minor_radius * math.sin(theta)
+                pos = Vec3(x, y, z)
+                n = (pos - center).normalized()
+                vertex.addData3(pos)
+                normal.addData3(n)
+                color.addData4(*belt_color)
+                verts.append((i, j))
+
+        # Build triangles
+        tris = GeomTriangles(Geom.UHStatic)
+        for i in range(num_major):
+            for j in range(num_minor):
+                a = i * (num_minor + 1) + j
+                b = ((i + 1) % (num_major + 1)) * (num_minor + 1) + j
+                c = ((i + 1) % (num_major + 1)) * (num_minor + 1) + (j + 1)
+                d = i * (num_minor + 1) + (j + 1)
+                tris.addVertices(a, b, d)
+                tris.addVertices(b, c, d)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('radiation_belt')
+        node.addGeom(geom)
+        belt_np = self.render.attachNewNode(node)
+        belt_np.setTransparency(True)
+        belt_np.setTwoSided(True)
+        belt_np.setBin('transparent', 20)
+        return belt_np
 
 app = EarthOrbitApp()
 app.run()
