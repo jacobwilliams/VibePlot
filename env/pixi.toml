@@ -1,0 +1,12 @@
+[project]
+authors = ["Jacob Williams <jacobwilliams@users.noreply.github.com>"]
+channels = ["conda-forge", "panda3d-forge"]
+name = "env"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
+python = ">=3.13.3,<3.14"
+panda3d = ">=1.10.15,<2"
