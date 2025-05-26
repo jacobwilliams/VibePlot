@@ -1,3 +1,13 @@
+
+import sys
+
+# print('importing qt')
+# # these imports are crashing! ... something is wrong here...
+# # note getting installed right by pixi? in halo, it works with conda ?
+# from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
+# from PySide6.QtCore import Qt
+# print('done importing qt')
+
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 
@@ -17,13 +27,26 @@ from direct.gui.OnscreenText import OnscreenText
 import datetime
 from direct.particles.ParticleEffect import ParticleEffect
 
+from panda3d.core import WindowProperties
+
+from direct.gui.OnscreenImage import OnscreenImage
+from panda3d.core import TransparencyAttrib
+
 loadPrcFileData('', 'framebuffer-multisample 1')
 loadPrcFileData('', 'multisamples 4')
 loadPrcFileData('', 'window-title VibePlot')
+# loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
 
 class EarthOrbitApp(ShowBase):
-    def __init__(self):
+    def __init__(self, parent_window=None):
+        # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
+        if parent_window is not None:
+            props = WindowProperties()
+            props.setParentWindow(parent_window)
+            props.setOrigin(0, 0)
+            props.setSize(800, 600)  # Or your desired size
+            self.openDefaultWindow(props=props)
 
         # self.accept("mouse1-double", self.recenter_on_earth)  # doesn't work?
         self.accept("space", self.recenter_on_earth)
@@ -78,6 +101,38 @@ class EarthOrbitApp(ShowBase):
         # Load and apply Earth texture
         tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
         self.earth.setTexture(tex, 1)
+
+
+        # put a site on the Earth:
+        # site_lon = 0  # radians
+        # site_lat = 0  # radians
+        site_lat = 0.519   # radians
+        site_lon = 1.665  # radians
+        earth_radius = self.earth.getScale().x / 2 + 0.001
+        site_x = earth_radius * math.cos(site_lat) * math.cos(site_lon)
+        site_y = earth_radius * math.cos(site_lat) * math.sin(site_lon)
+        site_z = earth_radius * math.sin(site_lat)
+        # self.site_np = self.earth.attachNewNode("site")
+        # self.site_np.setPos(site_x, site_y, site_z)
+        self.site_np = self.earth.attachNewNode("site")
+        self.site_np.setPos(self.earth, site_x, site_y, site_z)
+        if False:
+            # Optional: add a small sphere to mark the site
+            site_marker = self.loader.loadModel("models/planet_sphere")
+            site_marker.setScale(0.08)
+            site_marker.setColor(1, 0, 0, 1)
+            site_marker.reparentTo(self.site_np)
+        self.site_lines_np = None
+
+        # # Place the HUD image in the lower right
+        # self.earth_hud = OnscreenImage(
+        #     image="models/land_ocean_ice_cloud_2048.jpg",
+        #     pos=(1.0 - 0.25, 0, -1.0 + 0.25),  # (x, z) in aspect2d, y is always 0
+        #     scale=(0.4, 0.2, 0.2),  # (x, y, z) scale; adjust as needed
+        #     parent=aspect2d
+        # )
+        # self.earth_hud.setTransparency(TransparencyAttrib.MAlpha)
+        # self.groundtrack_hud_node = self.earth_hud.attachNewNode("groundtrack_hud")
 
         if False:
             self.radiation_belt_np = self.add_radiation_belt(
@@ -166,7 +221,6 @@ class EarthOrbitApp(ShowBase):
 
         grid_np = self.earth.attachNewNode(grid.create())
 
-
         if False:
             # --- Equatorial plane (square, translucent) ---
             plane_size = 4.0  # Half-width of the square plane
@@ -215,7 +269,7 @@ class EarthOrbitApp(ShowBase):
 
         # Add orbit task
         self.orbit_radius = 4
-        self.orbit_speed = 0.5  # radians per second
+        self.orbit_speed = 1.0 #0.5  # radians per second
         self.taskMgr.add(self.orbit_task, "OrbitTask")
 
 
@@ -236,7 +290,7 @@ class EarthOrbitApp(ShowBase):
 
         # --- Visibility cone setup ---
         self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
-        self.visibility_cone_angle = math.radians(20)  # cone half-angle in radians
+        self.visibility_cone_angle = math.radians(10)  # cone half-angle in radians
         self.visibility_cone_segments = 24  # smoothness of the cone
 
         # Draw the orbit path
@@ -635,7 +689,7 @@ class EarthOrbitApp(ShowBase):
         earth_center = Point3(0, 0, 0)
         v = sat_pos - earth_center
         v_len = v.length()
-        earth_radius = self.earth.getScale().x
+        earth_radius = self.earth.getScale().x / 2
         if v_len != 0:
             surface_point = earth_center + v * (earth_radius / v_len)
         else:
@@ -712,6 +766,11 @@ class EarthOrbitApp(ShowBase):
             # Convert to Earth's local coordinates
             ground_point_local = self.earth.getRelativePoint(self.render, ground_point)
             self.groundtrack_trace.append(ground_point_local)
+            # Compute longitude and latitude
+            # lon = math.atan2(ground_point.getY(), ground_point.getX())
+            # lat = math.asin(ground_point.getZ() / self.earth.getScale().x)
+            # self.groundtrack_trace.append((lon, lat))
+
             # uncomment to make it a trace:
             if len(self.groundtrack_trace) > self.groundtrack_length:
                self.groundtrack_trace.pop(0)
@@ -727,13 +786,53 @@ class EarthOrbitApp(ShowBase):
                     segs.moveTo(pt)
                 else:
                     segs.drawTo(pt)
+            # for i, (lon, lat) in enumerate(self.groundtrack_trace):
+            #     x = self.earth.getScale().x * math.cos(lat) * math.cos(lon)
+            #     y = self.earth.getScale().x * math.cos(lat) * math.sin(lon)
+            #     z = self.earth.getScale().x * math.sin(lat)
+            #     pt = Point3(x, y, z)
+            #     alpha = i / max(1, len(self.groundtrack_trace) - 1)  # Avoid division by zero
+            #     segs.setColor(1, 0.5, 0, alpha)
+            #     if i == 0:
+            #         segs.moveTo(pt)
+            #     else:
+            #         segs.drawTo(pt)
             self.groundtrack_node.attachNewNode(segs.create())
             self.groundtrack_node.setTransparency(True)
+
+
+        # # Remove previous HUD groundtrack
+        # self.groundtrack_hud_node.node().removeAllChildren()
+        # segs = LineSegs()
+        # segs.setThickness(2.0)
+        # segs.setColor(1, 0.5, 0, 1)  # Orange
+
+        # # Draw groundtrack on HUD
+        # for i, pt in enumerate(self.groundtrack_trace):
+        #     # Convert 3D ground point to longitude/latitude
+        #     lon = math.atan2(pt.getY(), pt.getX())
+        #     lat = math.asin(pt.getZ() / self.earth.getScale().x)
+        #     # Map lon/lat to HUD image coordinates (-0.25 to +0.25 for both axes)
+        #     x = (lon / math.pi) * 0.25
+        #     y = (lat / (0.5 * math.pi)) * 0.25
+        #     if i == 0:
+        #         segs.moveTo(x, y, 0)
+        #     else:
+        #         segs.drawTo(x, y, 0)
+        # # for i, (lon, lat) in enumerate(self.groundtrack_trace):
+        # #     # Map lon/lat to HUD image coordinates (-0.25 to +0.25 for both axes)
+        # #     x = (lon / math.pi) * 0.25
+        # #     y = (lat / (0.5 * math.pi)) * 0.25
+        # #     if i == 0:
+        # #         segs.moveTo(x, y, 0)
+        # #     else:
+        # #         segs.drawTo(x, y, 0)
+        # self.groundtrack_hud_node.attachNewNode(segs.create())
 
         return Task.cont
 
     def rotate_earth_task(self, task):
-        self.earth.setH(self.earth.getH() + 0.2)  # Adjust speed as desired
+        self.earth.setH(self.earth.getH() + 0.4)  # Adjust speed as desired
         return Task.cont
 
     def hyperbolic_orbit_task(self, task):
@@ -868,6 +967,27 @@ class EarthOrbitApp(ShowBase):
         self.lines_np.removeNode()
         self.lines_np = NodePath(self.particle_lines.create())
         self.lines_np.reparentTo(self.render)
+
+        # lines that connect to a site:
+        # Remove previous site lines
+        if self.site_lines_np:
+            self.site_lines_np.removeNode()
+
+        site_lines = LineSegs()
+        site_lines.setThickness(2.0)
+        site_lines.setColor(0, 1, 0, 1)  # Green
+        site_pos = self.site_np.getPos(self.render)
+        earth_center = Point3(0, 0, 0)
+        earth_radius = self.earth.getScale().x
+        for particle in self.particles:
+            particle_pos = particle.getPos(self.render)
+            # Only draw if line does not intersect the Earth
+            if not self.line_intersects_sphere(site_pos, particle_pos, earth_center, earth_radius):
+                site_lines.moveTo(site_pos)
+                site_lines.drawTo(particle_pos)
+
+        self.site_lines_np = self.render.attachNewNode(site_lines.create())
+        self.site_lines_np.setTransparency(True)
 
         return Task.cont
 
@@ -1076,3 +1196,34 @@ class EarthOrbitApp(ShowBase):
 
 app = EarthOrbitApp()
 app.run()
+
+# ---- attempt to use pyside6 ... isn't working yet ----
+# class PandaWidget(QWidget):
+#     def __init__(self, parent=None):
+#         super().__init__(parent)
+#         self.setAttribute(Qt.WA_PaintOnScreen, True)
+#         self.setAttribute(Qt.WA_NativeWindow, True)
+#         self.setMinimumSize(800, 600)
+#         self.panda_app = None
+#         self.timer = QTimer(self)
+#         self.timer.timeout.connect(self.step_panda)
+
+#     def showEvent(self, event):
+#         if self.panda_app is None:
+#             window_handle = int(self.winId())
+#             self.panda_app = EarthOrbitApp(parent_window=window_handle)
+#             self.timer.start(16)  # ~60 FPS
+
+#     def step_panda(self):
+#         if self.panda_app is not None:
+#             self.panda_app.taskMgr.step()
+
+# if __name__ == "__main__":
+#     print('start')
+#     app = QApplication(sys.argv)
+#     main_window = QMainWindow()
+#     panda_widget = PandaWidget()
+#     main_window.setCentralWidget(panda_widget)
+#     main_window.resize(800, 600)
+#     main_window.show()
+#     sys.exit(app.exec())
