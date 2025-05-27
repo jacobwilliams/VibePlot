@@ -31,6 +31,9 @@ from panda3d.core import WindowProperties
 
 from direct.gui.OnscreenImage import OnscreenImage
 from panda3d.core import TransparencyAttrib
+from panda3d.core import Shader, TextureStage
+from panda3d.core import Mat3
+
 
 loadPrcFileData('', 'framebuffer-multisample 1')
 loadPrcFileData('', 'multisamples 4')
@@ -75,7 +78,7 @@ class EarthOrbitApp(ShowBase):
         self.trackball.node().setRelTo(self.render)
 
         # Set initial camera position
-        self.camera.setPos(0, -20, 0)
+        self.camera.setPos(0, 20, 0)
         self.camera.lookAt(0, 0, 0)
         # self.camera.reparentTo(self.trackball)  #
 
@@ -93,15 +96,64 @@ class EarthOrbitApp(ShowBase):
         star_tex = self.loader.loadTexture("models/2k_stars.jpg")
         self.stars.setTexture(star_tex, 1)
 
+        # Lighting
+        # ambient = AmbientLight("ambient")
+        # ambient.setColor((0.02, 0.02, 0.02, 1))
+        # self.render.setLight(self.render.attachNewNode(ambient))
+
+        # dlight = DirectionalLight("dlight")
+        # dlight.setColor((1, 1, 1, 1))
+        # dlnp = self.render.attachNewNode(dlight)
+        # dlnp.setHpr(0, -60, 0)
+        # # dlnp.setHpr(0, 60, 60)
+        # self.render.setLight(dlnp)
+
+        # Sunlight (directional)
+        dlight = DirectionalLight("dlight")
+        dlight.setColor((1, 1, 1, 1))
+        dlnp = self.render.attachNewNode(dlight)
+        # dlnp.setHpr(0, -60, 0)  # Or your desired sun direction
+        dlnp.setHpr(-10, 0, 0)  # Or your desired sun direction
+        sun_dir = dlnp.getQuat(self.render).getForward()
+        self.dlnp = dlnp  # Store a reference for later use
+
+        # Neutral ambient for the rest
+        neutral_ambient = AmbientLight("neutral_ambient")
+        # neutral_ambient.setColor((0.3, 0.3, 0.4, 1))
+        # neutral_ambient.setColor((0.5, 0.5, 0.6, 1))  # Brighter, cooler
+        neutral_ambient.setColor((0.85, 0.85, 0.85, 1))  # Brighter, cooler
+        # neutral_ambient.setColor((0.2, 0.2, 0.2, 1))  # Dimmer, more neutral
+        neutral_ambient_np = self.render.attachNewNode(neutral_ambient)
+        self.render.setLight(neutral_ambient_np)
+
         # Load the Earth sphere
         self.earth = self.loader.loadModel("models/planet_sphere")
         self.earth.reparentTo(self.render)
         self.earth.setScale(2, 2, 2)
         self.earth.setPos(0, 0, 0)
         # Load and apply Earth texture
-        tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
-        self.earth.setTexture(tex, 1)
+        # tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
+        # self.earth.setTexture(tex, 1)
 
+        day_tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
+        night_tex = self.loader.loadTexture("models/2k_earth_nightmap.jpg")
+        self.earth.setTexture(day_tex, 1)
+        # self.earth.setShaderAuto()
+        # self.earth.setLightOff()  # Remove inherited lights
+        # self.earth.setLight(dlnp)  # Only sunlight
+
+        # self.earth.setShader(Shader.load(Shader.SL_Cg, "models/earth_daynight.sha"))
+        # self.earth.setShader(Shader.load("models/earth_daynight.sha"))
+        self.earth.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
+        self.earth.setTexture(TextureStage("day"), day_tex)
+        self.earth.setTexture(TextureStage("night"), night_tex)
+        self.earth.setShaderInput("day", day_tex)
+        self.earth.setShaderInput("night", night_tex)
+        # Set the sun direction uniform (should match your light direction)
+        # sun_dir = dlnp.getQuat(self.render).getForward()
+        # self.earth.setShaderInput("sundir", sun_dir)
+        self.earth.setShaderInput("sundir", sun_dir)
+        # self.earth.setShaderInput("ambient_color", (0.3, 0.3, 0.4, 1))  # Or your preferred ambient color
 
         # put a site on the Earth:
         # site_lon = 0  # radians
@@ -154,6 +206,9 @@ class EarthOrbitApp(ShowBase):
         self.moon_trace = []
         self.moon_trace_length = 200  # Number of points to keep in the moon's trace
         self.moon_trace_node = self.render.attachNewNode("moon_trace")
+        self.moon.setLightOff()
+        self.moon.setLight(dlnp)
+        self.moon.setShaderInput("sundir", sun_dir)
 
         # --- Moon coordinate axes ---
         moon_axes = LineSegs()
@@ -184,9 +239,10 @@ class EarthOrbitApp(ShowBase):
         # --- Latitude/Longitude grid ---
         grid = LineSegs()
         grid.setThickness(1.0)
-        grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        grid.setColor(1, 1, 1, 1)  # White, fully opaque
 
-        radius = 1 #self.earth.getScale().x  # Earth radius
+        radius = self.earth.getScale().x  # Earth radius
         num_lat = 9   # Number of latitude lines (excluding poles)
         num_lon = 18  # Number of longitude lines
 
@@ -219,7 +275,14 @@ class EarthOrbitApp(ShowBase):
                 else:
                     grid.drawTo(x, y, z)
 
-        grid_np = self.earth.attachNewNode(grid.create())
+        # grid_np = self.earth.attachNewNode(grid.create())
+        # grid_np.setShaderOff()
+        # grid_np.setLightOff()
+        # .. the shader is effecting the grid lines, so do this instead:
+        self.grid_np = self.render.attachNewNode(grid.create())
+        self.grid_np.setShaderOff()
+        self.grid_np.setLightOff()
+        self.grid_np.setTwoSided(True)
 
         if False:
             # --- Equatorial plane (square, translucent) ---
@@ -256,16 +319,6 @@ class EarthOrbitApp(ShowBase):
             grid_np.setTransparency(TransparencyAttrib.MAlpha)
 
 
-        # Lighting
-        ambient = AmbientLight("ambient")
-        ambient.setColor((0.02, 0.02, 0.02, 1))
-        self.render.setLight(self.render.attachNewNode(ambient))
-
-        dlight = DirectionalLight("dlight")
-        dlight.setColor((1, 1, 1, 1))
-        dlnp = self.render.attachNewNode(dlight)
-        dlnp.setHpr(0, -60, 0)
-        self.render.setLight(dlnp)
 
         # Add orbit task
         self.orbit_radius = 4
@@ -286,7 +339,11 @@ class EarthOrbitApp(ShowBase):
 
         self.groundtrack_trace = []
         self.groundtrack_length = 1000  # Number of points to keep in the groundtrack
-        self.groundtrack_node = self.earth.attachNewNode("groundtrack")
+        #self.groundtrack_node = self.earth.attachNewNode("groundtrack")
+        self.groundtrack_node = self.render.attachNewNode("groundtrack")
+        self.groundtrack_node.setShaderOff()
+        self.groundtrack_node.setLightOff()
+        self.groundtrack_node.setTwoSided(True)
 
         # --- Visibility cone setup ---
         self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
@@ -317,14 +374,14 @@ class EarthOrbitApp(ShowBase):
         # to pulsate the orbit line:
         # self.taskMgr.add(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
 
-        self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
-        self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
+        # self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
+        # self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
 
         # #--------------------------------------------
         # # Draw Earth-fixed coordinate axes (origin at Earth's center)
         # axes = LineSegs()
         # axes.setThickness(3.0)
-        axis_length = self.earth.getScale().x * 1  # Earth radius * 2
+        axis_length = self.earth.getScale().x * 2  # Earth radius * 2
 
         # # X axis (red)
         # axes.setColor(1, 1, 1, 0.6)
@@ -350,37 +407,44 @@ class EarthOrbitApp(ShowBase):
         # lighting for the arrows only:
         arrow_ambient = AmbientLight("arrow_ambient")
         arrow_ambient.setColor((0.2, 0.2, 0.2, 1))  # Brighter ambient just for arrow
+        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
 
         # Y arrowhead
-        x_arrow = self.loader.loadModel("models/arrow")
-        x_arrow.reparentTo(self.earth)
-        x_arrow.setPos(0, 0, 0)
-        x_arrow.setHpr(270, 0, 90)  # Points along +Y
-        x_arrow.setScale(arrow_scale)
-        x_arrow.setColor(0, 1, 0, 1)
-        # x_arrow.setLightOff()  # Remove all inherited lights
-        arrow_ambient_np = x_arrow.attachNewNode(arrow_ambient)
-        x_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
+        self.x_arrow = self.loader.loadModel("models/arrow")
+        self.x_arrow.reparentTo(self.earth)
+        self.x_arrow.setPos(0, 0, 0)
+        self.x_arrow.setHpr(0, 90, 0)  # Points along +Y
+        self.x_arrow.setScale(arrow_scale)
+        self.x_arrow.setColor(0, 1, 0, 1)
+        self.x_arrow.setLightOff()  # Remove all inherited lights
+        self.x_arrow.reparentTo(self.render)
+        self.x_arrow.setLight(self.dlnp)            # Sunlight (directional)
+        self.x_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
 
         # X arrowhead
-        y_arrow = self.loader.loadModel("models/arrow")
-        y_arrow.reparentTo(self.earth)
-        y_arrow.setPos(0, 0, 0)
-        y_arrow.setHpr(180, 0, 90)  # Points along +X
-        y_arrow.setScale(arrow_scale)
-        y_arrow.setColor(0, 1, 0, 1)
-        arrow_ambient_np = y_arrow.attachNewNode(arrow_ambient)
-        y_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
+        self.y_arrow = self.loader.loadModel("models/arrow")
+        self.y_arrow.reparentTo(self.earth)
+        self.y_arrow.setPos(0, 0, 0)
+        self.y_arrow.setHpr(180, 0, -90)  # Points along +X
+        self.y_arrow.setScale(arrow_scale)
+        self.y_arrow.setColor(0, 1, 0, 1)
+        self.y_arrow.reparentTo(self.render)
+        self.y_arrow.setLightOff()  # Remove all inherited lights
+        self.y_arrow.setLight(self.dlnp)            # Sunlight (directional)
+        self.y_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
 
         # Z arrowhead
-        z_arrow = self.loader.loadModel("models/arrow")
-        z_arrow.reparentTo(self.earth)
-        z_arrow.setPos(0, 0, 0)
-        z_arrow.setHpr(180, 0, 0)  # Points along +Z
-        z_arrow.setScale(arrow_scale)
-        z_arrow.setColor(0, 0, 1, 1)
-        arrow_ambient_np = z_arrow.attachNewNode(arrow_ambient)
-        z_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
+        self.z_arrow = self.loader.loadModel("models/arrow")
+        self.z_arrow.reparentTo(self.earth)
+        self.z_arrow.setPos(0, 0, 0)
+        self.z_arrow.setHpr(180, 0, 0)  # Points along +Z
+        self.z_arrow.setScale(arrow_scale)
+        self.z_arrow.setColor(0, 0, 1, 1)
+        self.z_arrow.setLightOff()  # Remove all inherited lights
+        self.z_arrow.reparentTo(self.render)
+        self.z_arrow.setLight(self.dlnp)            # Sunlight (directional)
+        self.z_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
+
 
         # #--------------------------------------------
 
@@ -762,7 +826,7 @@ class EarthOrbitApp(ShowBase):
         # Project satellite position onto Earth's surface
         sat_vec = sat_pos - Point3(0, 0, 0)
         if sat_vec.length() != 0:
-            ground_point = sat_vec.normalized() * self.earth.getScale().x
+            ground_point = sat_vec.normalized() * (self.earth.getScale().x * 2.01)
             # Convert to Earth's local coordinates
             ground_point_local = self.earth.getRelativePoint(self.render, ground_point)
             self.groundtrack_trace.append(ground_point_local)
@@ -833,6 +897,24 @@ class EarthOrbitApp(ShowBase):
 
     def rotate_earth_task(self, task):
         self.earth.setH(self.earth.getH() + 0.4)  # Adjust speed as desired
+
+        # we have to do all this because the earth uses a custom shader,
+        # which messes up all the child objects.
+        self.grid_np.setH(self.earth.getH())  # <-- rotate the lat/lon grid with the earth
+        self.groundtrack_node.setH(self.earth.getH())
+        self.x_arrow.setH(self.earth.getH())
+        self.y_arrow.setH(self.earth.getH())
+        self.z_arrow.setH(self.earth.getH())
+
+        # Update sun direction in Earth's local space
+        sun_dir_world = self.dlnp.getQuat(self.render).getForward()
+        sun_dir_local = self.earth.getQuat(self.render).conjugate().xform(sun_dir_world)
+        # self.earth.setShaderInput("sundir", sun_dir_local)
+        # Rotate sun_dir_local by -90 degrees around Z to match texture orientation
+        rot90 = Mat3.rotateMatNormaxis(180, Vec3(0, 0, 1))
+        sun_dir_local_rot = rot90.xform(sun_dir_local)
+        self.earth.setShaderInput("sundir", sun_dir_local_rot)
+
         return Task.cont
 
     def hyperbolic_orbit_task(self, task):
@@ -1141,6 +1223,11 @@ class EarthOrbitApp(ShowBase):
         #     else:
         #         moon_orbit.drawTo(x, y, z)
         # moon_orbit_np = self.render.attachNewNode(moon_orbit.create())
+
+        # # Update sun direction in Moon's local space
+        # sun_dir_world = self.dlnp.getQuat(self.render).getForward()
+        # sun_dir_local = self.moon.getQuat(self.render).conjugate().xform(sun_dir_world)
+        # self.moon.setShaderInput("sundir", sun_dir_local)
 
         return Task.cont
 
