@@ -263,9 +263,21 @@ class EarthOrbitApp(ShowBase):
 
         dlight = DirectionalLight("dlight")
         dlight.setColor((1, 1, 1, 1))
+        dlight.setShadowCaster(True, 2048, 2048)  # Enable shadow casting, set shadow map resolution
         dlnp = self.render.attachNewNode(dlight)
         dlnp.setHpr(0, -60, 0)
+        # dlnp.setHpr(-60, 0, 0)   # why does this make it look weird?
         self.render.setLight(dlnp)
+        self.earth.setShaderAuto()
+        self.moon.setShaderAuto()
+        self.moon_shadow_cone_np = None
+
+        dlight.getLens().setFilmSize(20, 20)
+        dlight.getLens().setNearFar(1, 50)
+
+        # If you want the Earth to receive shadows but not cast them (for artistic effect), you can use:
+        # self.earth.setBin('opaque', 10)
+        # self.earth.setDepthWrite(True)
 
         # Add orbit task
         self.orbit_radius = 4
@@ -1141,6 +1153,147 @@ class EarthOrbitApp(ShowBase):
         #     else:
         #         moon_orbit.drawTo(x, y, z)
         # moon_orbit_np = self.render.attachNewNode(moon_orbit.create())
+
+
+        # # Remove previous shadow cone if it exists
+        # if self.moon_shadow_cone_np:
+        #     self.moon_shadow_cone_np.removeNode()
+
+        # moon_pos = self.moon.getPos(self.render)
+        # moon_radius = self.moon.getScale().x
+        # earth_radius = self.earth.getScale().x / 2
+
+        # # Get sun direction (away from the light source)
+        # sun_dir = -self.render.find("**/dlight").getQuat(self.render).getForward()
+
+        # # Find intersection with Earth's surface (if any)
+        # earth_center = Point3(0, 0, 0)
+        # to_earth = earth_center - moon_pos
+        # proj = to_earth.project(sun_dir)
+        # shadow_length = proj.length() if proj.dot(sun_dir) > 0 else 20  # fallback length
+
+        # # Cone geometry
+        # cone_height = shadow_length
+        # cone_apex = moon_pos
+        # cone_base_center = cone_apex + sun_dir * cone_height
+        # cone_angle = math.atan(moon_radius / cone_height)
+        # base_radius = cone_height * math.tan(cone_angle)
+
+        # # Orthonormal basis for base circle
+        # axis = sun_dir
+        # up = Vec3(0, 0, 1) if abs(axis.dot(Vec3(0, 0, 1))) < 0.99 else Vec3(0, 1, 0)
+        # right = axis.cross(up).normalized()
+        # up = right.cross(axis).normalized()
+
+        # # Build cone geometry
+        # format = GeomVertexFormat.getV3c4()
+        # vdata = GeomVertexData('moon_shadow_cone', format, Geom.UHStatic)
+        # vertex = GeomVertexWriter(vdata, 'vertex')
+        # color = GeomVertexWriter(vdata, 'color')
+
+        # # Apex at the moon
+        # vertex.addData3(cone_apex)
+        # color.addData4(0.5, 0, 0, 0.8)  # semi-transparent black
+
+        # # Base circle
+        # segments = 32
+        # for i in range(segments + 1):
+        #     theta = 2 * math.pi * i / segments
+        #     dir_vec = (right * math.cos(theta) + up * math.sin(theta)) * base_radius
+        #     pt = cone_base_center + dir_vec
+        #     vertex.addData3(pt)
+        #     color.addData4(0, 0, 0, 0.12)
+
+        # # Triangles
+        # tris = GeomTriangles(Geom.UHStatic)
+        # for i in range(segments):
+        #     tris.addVertices(0, i + 1, i + 2)
+        # geom = Geom(vdata)
+        # geom.addPrimitive(tris)
+        # node = GeomNode('moon_shadow_cone')
+        # node.addGeom(geom)
+        # self.moon_shadow_cone_np = self.render.attachNewNode(node)
+        # self.moon_shadow_cone_np.setTransparency(True)
+        # self.moon_shadow_cone_np.setBin('transparent', 30)
+
+        # Remove previous shadow cylinder if it exists
+        if self.moon_shadow_cone_np:
+            self.moon_shadow_cone_np.removeNode()
+
+        moon_pos = self.moon.getPos(self.render)
+        moon_radius = self.moon.getScale().x
+        earth_radius = self.earth.getScale().x / 2
+
+        # Get sun direction (away from the light source)
+        sun_dir = self.render.find("**/dlight").getQuat(self.render).getForward()
+
+        # Cylinder parameters
+        cyl_radius = moon_radius
+        cyl_length = 20  # Make this long enough to reach/pierce the Earth
+
+        # Cylinder axis: from moon_pos in sun_dir direction
+        cyl_base = moon_pos
+        cyl_top = moon_pos + sun_dir * cyl_length
+
+        # Orthonormal basis for the cylinder's circular face
+        axis = sun_dir.normalized()
+        up = Vec3(0, 0, 1) if abs(axis.dot(Vec3(0, 0, 1))) < 0.99 else Vec3(0, 1, 0)
+        right = axis.cross(up).normalized()
+        up = right.cross(axis).normalized()
+
+        segments = 32
+        format = GeomVertexFormat.getV3c4()
+        vdata = GeomVertexData('moon_shadow_cyl', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        color = GeomVertexWriter(vdata, 'color')
+
+        # Bottom circle (at moon)
+        for i in range(segments):
+            theta = 2 * math.pi * i / segments
+            dir_vec = (right * math.cos(theta) + up * math.sin(theta)) * cyl_radius
+            pt = cyl_base + dir_vec
+            vertex.addData3(pt)
+            color.addData4(0.2, 0.2, 0.5, 0.45)  # dark blue, more opaque
+
+        # Top circle (away from sun)
+        for i in range(segments):
+            theta = 2 * math.pi * i / segments
+            dir_vec = (right * math.cos(theta) + up * math.sin(theta)) * cyl_radius
+            pt = cyl_top + dir_vec
+            vertex.addData3(pt)
+            color.addData4(0.2, 0.2, 0.5, 0.25)  # dark blue, more opaque
+
+        # Side faces (quads split into triangles)
+        tris = GeomTriangles(Geom.UHStatic)
+        for i in range(segments):
+            a = i
+            b = (i + 1) % segments
+            c = segments + i
+            d = segments + ((i + 1) % segments)
+            tris.addVertices(a, b, c)
+            tris.addVertices(b, d, c)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('moon_shadow_cyl')
+        node.addGeom(geom)
+        self.moon_shadow_cone_np = self.render.attachNewNode(node)
+        self.moon_shadow_cone_np.setTransparency(True)
+        self.moon_shadow_cone_np.setBin('transparent', 30)
+
+        # outline = LineSegs()
+        # outline.setThickness(2.5)
+        # outline.setColor(1, 1, 0.2, 0.7)  # yellowish outline
+
+        # for i in range(segments + 1):
+        #     theta = 2 * math.pi * i / segments
+        #     dir_vec = (right * math.cos(theta) + up * math.sin(theta)) * cyl_radius
+        #     pt1 = cyl_base + dir_vec
+        #     pt2 = cyl_top + dir_vec
+        #     outline.moveTo(pt1)
+        #     outline.drawTo(pt2)
+
+        # self.moon_shadow_cone_np.attachNewNode(outline.create())
 
         return Task.cont
 
