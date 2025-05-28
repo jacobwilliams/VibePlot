@@ -12,6 +12,11 @@ pixi shell --manifest-path ./env/pixi.toml
 python test.py
 ```
 
+Keys:
+ * 'a' -- pause/reset the animation
+ * space -- recenter the camera view
+ * 'r' -- start/stop `.mp4` movie capture
+
 ### See also
 
 * [Panda3D](https://www.panda3d.org)

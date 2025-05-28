@@ -4,6 +4,8 @@ import json
 import math
 import random
 import psutil, os
+import imageio
+import numpy as np
 
 # print('importing qt')
 # # these imports are crashing! ... something is wrong here...
@@ -427,7 +429,7 @@ class EarthOrbitApp(ShowBase):
 
         # lighting for the arrows only:
         arrow_ambient = AmbientLight("arrow_ambient")
-        arrow_ambient.setColor((0.3, 0.3, 0.3, 1))  # Brighter ambient just for arrow
+        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))  # Brighter ambient just for arrow
         arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
 
         self.axes_np = self.render.attachNewNode("axes")
@@ -583,6 +585,24 @@ class EarthOrbitApp(ShowBase):
 
         # self.setup_mouse_picker()
 
+        self.record_movie = False
+        self.movie_writer = None
+        self.movie_filename = "output.mp4"
+        self.movie_fps = 60 #30  # or your desired framerate
+        self.accept("r", self.toggle_movie_recording)
+
+    def toggle_movie_recording(self):
+        self.record_movie = not self.record_movie
+        if self.record_movie:
+            print("Recording started.")
+            # self.movie_writer = imageio.get_writer(self.movie_filename, fps=self.movie_fps)
+            self.movie_writer = imageio.get_writer(self.movie_filename, fps=self.movie_fps, codec='libx264', format='ffmpeg')
+        else:
+            print("Recording stopped.")
+            if self.movie_writer:
+                self.movie_writer.close()
+                self.movie_writer = None
+
     # def recenter_on_earth(self):
     #     # Reset camera and trackball to look at Earth's center
     #     self.trackball.node().setHpr(0, 0, 0)
@@ -672,6 +692,24 @@ class EarthOrbitApp(ShowBase):
     #             # Recenter the trackball's origin to the picked object
     #             self.trackball.node().setOrigin(pos)
 
+    def create_axes(self, length=0.3, thickness=2.0):
+        from panda3d.core import LineSegs, NodePath
+        segs = LineSegs()
+        segs.setThickness(thickness)
+        # X axis (red)
+        segs.setColor(1, 0, 0, 1)
+        segs.moveTo(0, 0, 0)
+        segs.drawTo(length, 0, 0)
+        # Y axis (green)
+        segs.setColor(0, 1, 0, 1)
+        segs.moveTo(0, 0, 0)
+        segs.drawTo(0, length, 0)
+        # Z axis (blue)
+        segs.setColor(0, 0, 1, 1)
+        segs.moveTo(0, 0, 0)
+        segs.drawTo(0, 0, length)
+        return NodePath(segs.create())
+
     def on_mouse_click(self):
         if self.mouseWatcherNode.hasMouse():
             mpos = self.mouseWatcherNode.getMouse()
@@ -753,6 +791,7 @@ class EarthOrbitApp(ShowBase):
         node.addGeom(geom)
         arrow_np = NodePath(node)
         arrow_np.setTwoSided(True)
+        # arrow_np.setBin('opaque', 10)
 
         arrow_np.setPos(0, 0, 0)  # by default, center at origin
 
@@ -1206,6 +1245,12 @@ class EarthOrbitApp(ShowBase):
             self.groundtrack_node.attachNewNode(segs.create())
             self.groundtrack_node.setTransparency(True)
 
+        if self.record_movie and self.movie_writer:
+            tex = self.win.getScreenshot()
+            img = np.array(tex.getRamImageAs("RGB"))
+            img = img.reshape((tex.getYSize(), tex.getXSize(), 3))
+            img = np.flipud(img)  # Flip vertically
+            self.movie_writer.append_data(img)
 
         # # Remove previous HUD groundtrack
         # self.groundtrack_hud_node.node().removeAllChildren()
@@ -1419,6 +1464,11 @@ class EarthOrbitApp(ShowBase):
             if not self.line_intersects_sphere(site_pos, particle_pos, earth_center, earth_radius):
                 site_lines.moveTo(site_pos)
                 site_lines.drawTo(particle_pos)
+            #---add little axes to all the particles, this slows it way down---
+            # axes_np = self.create_axes(length=8.0, thickness=2.0)
+            # axes_np.reparentTo(particle)
+            # axes_np.setLightOff()
+            #-----------------
 
         self.site_lines_np = self.render.attachNewNode(site_lines.create())
         self.site_lines_np.setTransparency(True)
