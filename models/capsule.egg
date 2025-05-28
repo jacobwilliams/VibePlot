@@ -1,0 +1,58 @@
+<CoordinateSystem> { Z-up }
+
+<Group> Capsule {
+  <Group> Body {
+    <VertexPool> BodyVertices {
+      <Vertex> 0 { 0 0 -0.5 }
+      <Vertex> 1 { 0.2 0 -0.5 }
+      <Vertex> 2 { 0.1414 0.1414 -0.5 }
+      <Vertex> 3 { 0 0.2 -0.5 }
+      <Vertex> 4 { -0.1414 0.1414 -0.5 }
+      <Vertex> 5 { -0.2 0 -0.5 }
+      <Vertex> 6 { -0.1414 -0.1414 -0.5 }
+      <Vertex> 7 { 0 -0.2 -0.5 }
+      <Vertex> 8 { 0.1414 -0.1414 -0.5 }
+      <Vertex> 9 { 0 0 0.5 }
+      <Vertex> 10 { 0.2 0 0.5 }
+      <Vertex> 11 { 0.1414 0.1414 0.5 }
+      <Vertex> 12 { 0 0.2 0.5 }
+      <Vertex> 13 { -0.1414 0.1414 0.5 }
+      <Vertex> 14 { -0.2 0 0.5 }
+      <Vertex> 15 { -0.1414 -0.1414 0.5 }
+      <Vertex> 16 { 0 -0.2 0.5 }
+      <Vertex> 17 { 0.1414 -0.1414 0.5 }
+    }
+    <Polygon> { <Normal> { 1 0 0 } <VertexRef> { 1 10 9 0 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0.707 0.707 0 } <VertexRef> { 2 11 10 1 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0 1 0 } <VertexRef> { 3 12 11 2 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -0.707 0.707 0 } <VertexRef> { 4 13 12 3 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -1 0 0 } <VertexRef> { 5 14 13 4 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -0.707 -0.707 0 } <VertexRef> { 6 15 14 5 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0 -1 0 } <VertexRef> { 7 16 15 6 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0.707 -0.707 0 } <VertexRef> { 8 17 16 7 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 1 0 0 } <VertexRef> { 1 2 11 10 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0.707 0.707 0 } <VertexRef> { 2 3 12 11 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0 1 0 } <VertexRef> { 3 4 13 12 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -0.707 0.707 0 } <VertexRef> { 4 5 14 13 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -1 0 0 } <VertexRef> { 5 6 15 14 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { -0.707 -0.707 0 } <VertexRef> { 6 7 16 15 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0 -1 0 } <VertexRef> { 7 8 17 16 <Ref> BodyVertices > }
+    }
+    <Polygon> { <Normal> { 0.707 -0.707 0 } <VertexRef> { 8 1 10 17 <Ref> BodyVertices > }
+    }
+  }
+}
