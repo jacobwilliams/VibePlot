@@ -102,9 +102,12 @@ class EarthOrbitApp(ShowBase):
 
         # Star background (sky sphere)
         self.stars = self.loader.loadModel("models/planet_sphere")
-        self.stars.reparentTo(self.render)
-        self.stars.setScale(100, 100, 100)
+        # self.stars.reparentTo(self.render)
+        self.stars.reparentTo(self.camera)
+        self.stars.setPos(0, 0, 0)
+        self.stars.setScale(1000, 1000, 1000)
         self.stars.setTwoSided(True)  # Render inside of sphere
+        self.stars.setCompass()
         self.stars.setBin('background', 0)
         self.stars.setDepthWrite(False)
         self.stars.setLightOff()
