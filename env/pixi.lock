@@ -129,6 +129,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pango-1.56.3-h73f1e88_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pcre2-10.44-ha881caa_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pixman-0.46.0-h2f9eb0b_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/psutil-7.0.0-py310h078409c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pthread-stubs-0.4-hd74edd7_1002.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pugixml-1.15-hd3d436d_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pyside6-6.8.3-py310hbfbe6f8_0.conda
@@ -312,8 +313,6 @@ packages:
   - libcxx >=15.0.7
   - libntlm
   - openssl >=3.1.1,<4.0a0
-  arch: arm64
-  platform: osx
   license: BSD-3-Clause-Attribution
   license_family: BSD
   size: 210957
@@ -331,8 +330,6 @@ packages:
   depends:
   - expat >=2.4.2,<3.0a0
   - libglib >=2.70.2,<3.0a0
-  arch: arm64
-  platform: osx
   license: GPL-2.0-or-later
   license_family: GPL
   size: 574595
@@ -343,8 +340,6 @@ packages:
   depends:
   - __osx >=11.0
   - libcxx >=18
-  arch: arm64
-  platform: osx
   license: BSD-3-Clause
   license_family: BSD
   size: 63265
@@ -355,8 +350,6 @@ packages:
   depends:
   - __osx >=11.0
   - libexpat 2.7.0 h286801f_0
-  arch: arm64
-  platform: osx
   license: MIT
   license_family: MIT
   size: 127135
@@ -643,8 +636,6 @@ packages:
   - libedit >=3.1.20191231,<3.2.0a0
   - libedit >=3.1.20191231,<4.0a0
   - openssl >=3.3.1,<4.0a0
-  arch: arm64
-  platform: osx
   license: MIT
   license_family: MIT
   size: 1155530
@@ -820,8 +811,6 @@ packages:
   - __osx >=11.0
   - libcxx >=18.1.8
   - libllvm18 >=18.1.8,<18.2.0a0
-  arch: arm64
-  platform: osx
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
   size: 13330110
@@ -833,8 +822,6 @@ packages:
   - __osx >=11.0
   - libcxx >=20.1.5
   - libllvm20 >=20.1.5,<20.2.0a0
-  arch: arm64
-  platform: osx
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
   size: 8435096
@@ -864,8 +851,6 @@ packages:
   - ncurses
   - __osx >=11.0
   - ncurses >=6.5,<7.0a0
-  arch: arm64
-  platform: osx
   license: BSD-2-Clause
   license_family: BSD
   size: 107691
@@ -942,8 +927,6 @@ packages:
   - pcre2 >=10.44,<10.45.0a0
   constrains:
   - glib 2.84.0 *_0
-  arch: arm64
-  platform: osx
   license: LGPL-2.1-or-later
   size: 3698518
   timestamp: 1743039055882
@@ -1031,8 +1014,6 @@ packages:
   - libxml2 >=2.13.5,<2.14.0a0
   - libzlib >=1.3.1,<2.0a0
   - zstd >=1.5.6,<1.6.0a0
-  arch: arm64
-  platform: osx
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
   size: 25986548
@@ -1046,8 +1027,6 @@ packages:
   - libxml2 >=2.13.8,<2.14.0a0
   - libzlib >=1.3.1,<2.0a0
   - zstd >=1.5.7,<1.6.0a0
-  arch: arm64
-  platform: osx
   license: Apache-2.0 WITH LLVM-exception
   license_family: Apache
   size: 28903439
@@ -1068,8 +1047,6 @@ packages:
   md5: c90c1d3bd778f5ec0d4bb4ef36cbd5b6
   depends:
   - __osx >=11.0
-  arch: arm64
-  platform: osx
   license: LGPL-2.1-or-later
   size: 31099
   timestamp: 1734670168822
@@ -1252,8 +1229,6 @@ packages:
   - krb5 >=1.21.3,<1.22.0a0
   - openldap >=2.6.9,<2.7.0a0
   - openssl >=3.5.0,<4.0a0
-  arch: arm64
-  platform: osx
   license: PostgreSQL
   size: 2502508
   timestamp: 1746744054052
@@ -1379,8 +1354,6 @@ packages:
   md5: 560c9cacc33e927f55b998eaa0cb1732
   depends:
   - libxml2 >=2.12.1,<2.14.0a0
-  arch: arm64
-  platform: osx
   license: MIT
   license_family: MIT
   size: 225705
@@ -1443,8 +1416,6 @@ packages:
   - __osx >=11.0
   - libcxx >=18
   - openssl >=3.4.1,<4.0a0
-  arch: arm64
-  platform: osx
   license: GPL-2.0-or-later
   license_family: GPL
   size: 619690
@@ -1459,8 +1430,6 @@ packages:
   - mysql-common 9.0.1 hd7719f6_6
   - openssl >=3.4.1,<4.0a0
   - zstd >=1.5.7,<1.6.0a0
-  arch: arm64
-  platform: osx
   license: GPL-2.0-or-later
   license_family: GPL
   size: 1352817
@@ -1532,8 +1501,6 @@ packages:
   - krb5 >=1.21.3,<1.22.0a0
   - libcxx >=18
   - openssl >=3.5.0,<4.0a0
-  arch: arm64
-  platform: osx
   license: OLDAP-2.8
   license_family: BSD
   size: 843597
@@ -1636,8 +1603,6 @@ packages:
   - __osx >=11.0
   - bzip2 >=1.0.8,<2.0a0
   - libzlib >=1.3.1,<2.0a0
-  arch: arm64
-  platform: osx
   license: BSD-3-Clause
   license_family: BSD
   size: 621564
@@ -1652,6 +1617,20 @@ packages:
   license_family: MIT
   size: 213341
   timestamp: 1746011718977
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/psutil-7.0.0-py310h078409c_0.conda
+  sha256: c4aa4d0e144691383a88214ef02cc67909fccd5885601bafc9eaaf8bbe1c2877
+  md5: 0079de80b6bf6e1c5c9ea067dce6bb05
+  depends:
+  - __osx >=11.0
+  - python >=3.10,<3.11.0a0
+  - python >=3.10,<3.11.0a0 *_cpython
+  - python_abi 3.10.* *_cp310
+  arch: arm64
+  platform: osx
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 363458
+  timestamp: 1740663509903
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pthread-stubs-0.4-hd74edd7_1002.conda
   sha256: 8ed65e17fbb0ca944bfb8093b60086e3f9dd678c3448b5de212017394c247ee3
   md5: 415816daf82e0b23a736a069a75e9da7
@@ -1684,8 +1663,6 @@ packages:
   - python_abi 3.10.* *_cp310
   - qt6-main 6.8.3.*
   - qt6-main >=6.8.3,<6.9.0a0
-  arch: arm64
-  platform: osx
   license: LGPL-3.0-only
   license_family: LGPL
   size: 11812649
@@ -1748,8 +1725,6 @@ packages:
   - zstd >=1.5.7,<1.6.0a0
   constrains:
   - qt 6.8.3
-  arch: arm64
-  platform: osx
   license: LGPL-3.0-only
   license_family: LGPL
   size: 44414622

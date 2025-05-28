@@ -3,6 +3,7 @@ import sys
 import json
 import math
 import random
+import psutil, os
 
 # print('importing qt')
 # # these imports are crashing! ... something is wrong here...
@@ -49,6 +50,9 @@ class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
+
+        self.process = psutil.Process(os.getpid())
+        self.process.cpu_percent()  # Initialize CPU usage
 
         if parent_window is not None:
             props = WindowProperties()
@@ -1272,7 +1276,16 @@ class EarthOrbitApp(ShowBase):
         self.frame_count += 1
         # self.hud_text.setText(f"Frame: {self.frame_count}")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.hud_text.setText(f"{now}")
+        fps = globalClock.getAverageFrameRate()
+        mem_mb = self.process.memory_info().rss / (1024 * 1024)
+        cpu = self.process.cpu_percent()
+        text_to_display = [f"{now}",
+                           f"FPS: {fps:.1f}",
+                           f"Frame: {self.frame_count}",
+                           f"Mem: {mem_mb:.1f} MB",
+                           f"CPU: {cpu:.1f}%"]
+        self.hud_text.setText('\n'.join(text_to_display))
+        # self.hud_text.setText(f"{now}\nFPS: {fps:.1f}")
         for i, particle in enumerate(self.particles):
             r, inclination, angle0, speed = self.particle_params[i]
             angle = angle0 + task.time * speed
