@@ -6,6 +6,11 @@ import random
 import psutil, os
 import imageio
 import numpy as np
+import datetime
+
+from direct.gui.OnscreenText import OnscreenText
+from direct.particles.ParticleEffect import ParticleEffect
+from direct.gui.OnscreenImage import OnscreenImage
 
 # print('importing qt')
 # # these imports are crashing! ... something is wrong here...
@@ -16,37 +21,27 @@ import numpy as np
 
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
-
-from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode, GeomTriangles, NodePath, Vec3, Vec4, Mat4
-import math
-
-from panda3d.core import Point3, TextureStage, AmbientLight, DirectionalLight, LVector3
 from direct.task import Task
-from panda3d.core import Point3
-from panda3d.core import loadPrcFileData
-from panda3d.core import LineSegs, NodePath
-from panda3d.core import TextNode
-from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode, GeomTriangles, GeomVertexWriter, GeomVertexRewriter, GeomLinestrips, Vec3, Vec4
-from panda3d.core import CardMaker, TransparencyAttrib
 
-from direct.gui.OnscreenText import OnscreenText
-import datetime
-from direct.particles.ParticleEffect import ParticleEffect
-
-from panda3d.core import WindowProperties
-
-from direct.gui.OnscreenImage import OnscreenImage
-from panda3d.core import TransparencyAttrib
-from panda3d.core import Shader, TextureStage
-from panda3d.core import Mat3
-from panda3d.core import Quat
-from panda3d.core import CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, BitMask32
+from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
+                          GeomTriangles, NodePath, Vec3, Vec4, Mat4,
+                          Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
+                          loadPrcFileData, LineSegs, TextNode,
+                          GeomVertexRewriter, GeomLinestrips,
+                          CardMaker, TransparencyAttrib,
+                          WindowProperties, TransparencyAttrib,
+                          Shader, Mat3, BitMask32,
+                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue,
+                          )
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
 loadPrcFileData('', 'multisamples 4')
 loadPrcFileData('', 'window-title VibePlot')
 # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
+
+EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
+MOON_RADIUS = 0.5  # Radius of Moon in Panda3D units
 
 class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
@@ -67,6 +62,7 @@ class EarthOrbitApp(ShowBase):
         self.accept("space", self.recenter_on_earth)
 
         self.accept("a", self.toggle_scene_animation)  # Press 'a' to toggle all animation
+        # self.accept("window-event", self.on_window_event)  # for moving HUD
 
         self.scene_anim_running = True
         self.scene_anim_task_names = [
@@ -154,78 +150,44 @@ class EarthOrbitApp(ShowBase):
         self.render.setLight(neutral_ambient_np)
 
         # Load the Earth sphere
-        self.earth = self.loader.loadModel("models/planet_sphere")
+        self.earth = self.create_sphere(radius=EARTH_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
         self.earth.reparentTo(self.render)
-        self.earth.setScale(2, 2, 2)
         self.earth.setPos(0, 0, 0)
         # Load and apply Earth texture
-        # tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
-        # self.earth.setTexture(tex, 1)
-
-        self.earth.setCollideMask(BitMask32.bit(1))
-
         day_tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
         night_tex = self.loader.loadTexture("models/2k_earth_nightmap.jpg")
         self.earth.setTexture(day_tex, 1)
-        # self.earth.setShaderAuto()
-        # self.earth.setLightOff()  # Remove inherited lights
-        # self.earth.setLight(dlnp)  # Only sunlight
-
-        # self.earth.setShader(Shader.load(Shader.SL_Cg, "models/earth_daynight.sha"))
-        # self.earth.setShader(Shader.load("models/earth_daynight.sha"))
         self.earth.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
         self.earth.setTexture(TextureStage("day"), day_tex)
         self.earth.setTexture(TextureStage("night"), night_tex)
         self.earth.setShaderInput("day", day_tex)
         self.earth.setShaderInput("night", night_tex)
         # Set the sun direction uniform (should match your light direction)
-        # sun_dir = dlnp.getQuat(self.render).getForward()
-        # self.earth.setShaderInput("sundir", sun_dir)
         self.earth.setShaderInput("sundir", sun_dir)
-        # self.earth.setShaderInput("ambient_color", (0.3, 0.3, 0.4, 1))  # Or your preferred ambient color
 
         # put a site on the Earth:
-        # site_lon = 0  # radians
-        # site_lat = 0  # radians
         site_lat = 0.519   # radians
         site_lon = 1.665  # radians
-        earth_radius = self.earth.getScale().x / 2 + 0.001
+        earth_radius = EARTH_RADIUS + 0.001
         site_x = earth_radius * math.cos(site_lat) * math.cos(site_lon)
         site_y = earth_radius * math.cos(site_lat) * math.sin(site_lon)
         site_z = earth_radius * math.sin(site_lat)
-        # self.site_np = self.earth.attachNewNode("site")
-        # self.site_np.setPos(site_x, site_y, site_z)
         self.site_np = self.earth.attachNewNode("site")
         self.site_np.setPos(self.earth, site_x, site_y, site_z)
-        if False:
+        if True:
             # Optional: add a small sphere to mark the site
-            site_marker = self.loader.loadModel("models/planet_sphere")
-            site_marker.setScale(0.08)
-            site_marker.setColor(1, 0, 0, 1)
+            site_marker = self.create_sphere(radius=0.02, num_lat=24, num_lon=48, color=(1,0,0,0.5))
             site_marker.reparentTo(self.site_np)
+            site_marker.setShaderOff(1)   # so it won't have the earth texture
+            site_marker.setTextureOff(1)  #
+            site_marker.setTransparency(True)
         self.site_lines_np = None
 
-        # # Place the HUD image in the lower right
-        # self.earth_hud = OnscreenImage(
-        #     image="models/land_ocean_ice_cloud_2048.jpg",
-        #     pos=(1.0 - 0.25, 0, -1.0 + 0.25),  # (x, z) in aspect2d, y is always 0
-        #     scale=(0.4, 0.2, 0.2),  # (x, y, z) scale; adjust as needed
-        #     parent=aspect2d
-        # )
-        # self.earth_hud.setTransparency(TransparencyAttrib.MAlpha)
-        # self.groundtrack_hud_node = self.earth_hud.attachNewNode("groundtrack_hud")
-
-        if False:
-            self.radiation_belt_np = self.add_radiation_belt(
-                inner_radius=2.3,  # just outside Earth (Earth radius is 2)
-                outer_radius=3.2,  # adjust for thickness
-                belt_color=(0.2, 1, 0.2, 0.18)  # greenish, translucent
-            )
-
         # Add the Moon
-        self.moon = self.loader.loadModel("models/planet_sphere")
+        # self.moon = self.loader.loadModel("models/planet_sphere")
+        self.moon = self.create_sphere(radius=MOON_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
         self.moon.reparentTo(self.render)
-        self.moon.setScale(0.5)  # Relative to Earth (Earth=1, Moon~0.27)
+        #self.moon.setScale(0.5)  # Relative to Earth (Earth=1, Moon~0.27)
         # self.moon.setScale(0.5, 0.5, 0.3)  # X, Y, Z scale - ellipsoidal shape
         self.moon.setPos(0, 0, 0)
         tex = self.loader.loadTexture("models/lroc_color_poles_1k.jpg")
@@ -239,60 +201,42 @@ class EarthOrbitApp(ShowBase):
         self.moon.setLightOff()
         self.moon.setLight(dlnp)
         self.moon.setShaderInput("sundir", sun_dir)
+        self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
 
-        self.moon.setCollideMask(BitMask32.bit(1))
-
-        # # Draw an arrow from Earth center to Moon
-        # self.earth_to_moon_arrow = self.create_arrow(
-        #     start=Vec3(0, 0, 0),
-        #     end=self.moon.getPos(self.render),
-        #     shaft_radius=0.08,
-        #     head_length=0.4,
-        #     head_radius=0.18,
-        #     color=(1, 1, 0, 1)
-        # )
-        # self.earth_to_moon_arrow.reparentTo(self.render)
-        # self.earth_to_moon_arrow.setLightOff()
-        # self.earth_to_moon_arrow.setLight(self.dlnp)
-
-        # --- Moon coordinate axes ---
-        moon_axes = LineSegs()
-        moon_axes.setThickness(3.0)
-        axis_len = 5.0 * self.moon.getScale().x  # Adjust as needed
-        # X axis (red)
-        moon_axes.setColor(1, 0, 0, 1)
-        moon_axes.moveTo(0, 0, 0)
-        moon_axes.drawTo(axis_len, 0, 0)
-        # Y axis (green)
-        moon_axes.setColor(0, 1, 0, 1)
-        moon_axes.moveTo(0, 0, 0)
-        moon_axes.drawTo(0, axis_len, 0)
-        # Z axis (blue)
-        moon_axes.setColor(0, 0, 1, 1)
-        moon_axes.moveTo(0, 0, 0)
-        moon_axes.drawTo(0, 0, axis_len)
-
-        self.moon_axes_np = self.moon.attachNewNode(moon_axes.create())
-        self.moon_axes_np.setLightOff()
-
-
-        # # Add a small sphere as the satellite
-        # self.satellite = self.loader.loadModel("models/planet_sphere")
-        # self.satellite.setScale(0.2, 0.2, 0.2)
-        # self.satellite.setColor(1, 0, 0, 1)
-        # self.satellite.reparentTo(self.render)
-
+        # --- Add a satellite orbiting the Moon ---
+        self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
+        self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
+        self.moon_satellite = self.create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
+        self.moon_satellite.reparentTo(self.moon)  # Parent to the Moon so it follows Moon's orbit
+        self.taskMgr.add(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
+        # --- Visualize the satellite's orbit path around the Moon ---
+        moon_orbit_segs = LineSegs()
+        moon_orbit_segs.setThickness(2)
+        moon_orbit_segs.setColor(1, 0.5, 0, 1)  # Orange
+        segments = 100
+        for i in range(segments + 1):
+            angle = 2 * math.pi * i / segments
+            x = self.moon_satellite_orbit_radius * math.cos(angle)
+            y = self.moon_satellite_orbit_radius * math.sin(angle)
+            z = 0
+            if i == 0:
+                moon_orbit_segs.moveTo(x, y, z)
+            else:
+                moon_orbit_segs.drawTo(x, y, z)
+        self.moon_satellite_orbit_np = self.moon.attachNewNode(moon_orbit_segs.create())
+        # self.moon_satellite_orbit_np.setTransparency(True)
+        self.moon_satellite_orbit_np.setLightOff()
+        self.moon_satellite.setTextureOff(1)  # so it doesn't use the moon texture
+        self.moon_satellite.setShaderOff(1)
 
         # --- Latitude/Longitude grid ---
         grid = LineSegs()
         grid.setThickness(1.0)
         # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
         grid.setColor(1, 1, 1, 1)  # White, fully opaque
-
-        radius = self.earth.getScale().x  # Earth radius
+        radius = EARTH_RADIUS + 0.001
         num_lat = 9   # Number of latitude lines (excluding poles)
         num_lon = 18  # Number of longitude lines
-
         # Latitude lines (horizontal circles)
         for i in range(1, num_lat):
             lat = math.pi * i / num_lat  # from 0 (north pole) to pi (south pole)
@@ -307,7 +251,6 @@ class EarthOrbitApp(ShowBase):
                     grid.moveTo(x, y, z)
                 else:
                     grid.drawTo(x, y, z)
-
         # Longitude lines (vertical half-circles)
         for i in range(num_lon):
             lon = 2 * math.pi * i / num_lon
@@ -321,11 +264,7 @@ class EarthOrbitApp(ShowBase):
                     grid.moveTo(x, y, z)
                 else:
                     grid.drawTo(x, y, z)
-
-        # grid_np = self.earth.attachNewNode(grid.create())
-        # grid_np.setShaderOff()
-        # grid_np.setLightOff()
-        # .. the shader is effecting the grid lines, so do this instead:
+        # the shader is effecting the grid lines, so do this:
         self.grid_np = self.render.attachNewNode(grid.create())
         self.grid_np.setShaderOff()
         self.grid_np.setLightOff()
@@ -378,10 +317,11 @@ class EarthOrbitApp(ShowBase):
         # self.satellite.setScale(0.1, 0.1, 0.1)
         # self.satellite.setColor(1, 0, 0, 1)
         # self.satellite.reparentTo(self.render)
-        self.satellite = self.loader.loadModel("models/planet_sphere")
+        # self.satellite = self.loader.loadModel("models/planet_sphere")
         # self.satellite = self.loader.loadModel("models/teapot")
-        self.satellite.setScale(0.1, 0.1, 0.1)
-        self.satellite.setColor(1, 0, 0, 1)
+        self.satellite = self.create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
+        #self.satellite.setScale(0.1, 0.1, 0.1)
+        #self.satellite.setColor(1, 0, 0, 1)
         self.satellite.reparentTo(self.render)
 
         self.groundtrack_trace = []
@@ -401,7 +341,6 @@ class EarthOrbitApp(ShowBase):
         self.orbit_segs = LineSegs()
         self.orbit_segs.setThickness(2.0)
         self.orbit_segs.setColor(1, 1, 0, 1)  # Yellow
-
         num_segments = 100
         inclination = math.radians(45)
         for i in range(num_segments + 1):
@@ -412,12 +351,12 @@ class EarthOrbitApp(ShowBase):
             y_incl = y * math.cos(inclination) - z * math.sin(inclination)
             z_incl = y * math.sin(inclination) + z * math.cos(inclination)
             self.orbit_segs.drawTo(x, y_incl, z_incl)
-
         self.orbit_np = NodePath(self.orbit_segs.create())
         self.orbit_np.reparentTo(self.render)
-
         self.taskMgr.add(self.orbit_task, "OrbitTask")
+
         self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
+
         # to pulsate the orbit line:
         # self.taskMgr.add(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
 
@@ -431,10 +370,8 @@ class EarthOrbitApp(ShowBase):
         arrow_ambient = AmbientLight("arrow_ambient")
         arrow_ambient.setColor((0.4, 0.4, 0.4, 1))  # Brighter ambient just for arrow
         arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
-
         self.axes_np = self.render.attachNewNode("axes")
         self.axes_np.setPos(0, 0, 0)
-
         self.x_arrow = self.create_arrow()
         self.x_arrow.setHpr(90, 0, 0)    # +X axis
         self.y_arrow = self.create_arrow()
@@ -448,62 +385,6 @@ class EarthOrbitApp(ShowBase):
             a.setLight(arrow_ambient_np)  # Apply only this ambient light
         # self.earth_to_moon_arrow.setLight(arrow_ambient_np)
 
-        # #--------------------------------------------
-
-        # # --- Hyperbolic orbit path ---
-        # hyperbolic_segs = LineSegs()
-        # hyperbolic_segs.setThickness(1.0)
-        # hyperbolic_segs.setColor(0, 1, 1, 1)  # Cyan
-
-        # a = 12 # semi-transverse axis
-        # b = 8  # semi-conjugate axis
-        # h_inclination = math.radians(30)  # inclination for hyperbolic orbit
-        # num_segments = 200
-        # t_min = -2
-        # t_max = 2
-        # c = math.sqrt(a * a + b * b)  # Distance from center to focus
-
-        # dash_length = 3  # Number of segments per dash
-        # gap_length = 2   # Number of segments per gap
-
-        # drawing = True
-        # for i in range(num_segments + 1):
-        #     t = t_min + (t_max - t_min) * i / num_segments
-        #     x = a * math.cosh(t) - c  # Shift so focus is at x=0
-        #     y = b * math.sinh(t)
-        #     z = 0
-        #     # Rotate around X axis for inclination
-        #     y_incl = y * math.cos(h_inclination) - z * math.sin(h_inclination)
-        #     z_incl = y * math.sin(h_inclination) + z * math.cos(h_inclination)
-
-        #     # Dashed line logic
-        #     pattern_length = dash_length + gap_length
-        #     if (i % pattern_length) == 0:
-        #         drawing = True
-        #         hyperbolic_segs.moveTo(x, y_incl, z_incl)
-        #     elif (i % pattern_length) == dash_length:
-        #         drawing = False
-        #     if drawing:
-        #         hyperbolic_segs.drawTo(x, y_incl, z_incl)
-
-        # hyperbolic_np = NodePath(hyperbolic_segs.create())
-        # hyperbolic_np.reparentTo(self.render)
-        # # Hyperbolic satellite
-        # self.hyper_sat = self.loader.loadModel("models/planet_sphere")
-        # self.hyper_sat.setScale(0.15, 0.15, 0.15)
-        # self.hyper_sat.setColor(0, 1, 1, 1)
-        # self.hyper_sat.reparentTo(self.render)
-
-        # self.hyperbolic_a = a
-        # self.hyperbolic_b = b
-        # self.hyperbolic_c = c
-        # self.hyperbolic_incl = h_inclination
-        # self.hyperbolic_t_min = t_min
-        # self.hyperbolic_t_max = t_max
-        # self.hyperbolic_speed = 0.5  # Adjust for faster/slower
-
-        # self.taskMgr.add(self.hyperbolic_orbit_task, "HyperbolicOrbitTask")
-
         # --- Example particles ---
         self.particles = []
         self.particle_params = []
@@ -516,36 +397,13 @@ class EarthOrbitApp(ShowBase):
             inclination = random.uniform(0, math.pi)
             angle0 = random.uniform(0, 2 * math.pi)
             speed = random.uniform(0.05, 0.2)
-            particle = self.loader.loadModel("models/planet_sphere")
-            particle.setScale(particle_radius)
-            particle.setColor(random.random(), random.random(), random.random(), 1)
+            # particle = self.loader.loadModel("models/planet_sphere")
+            #particle.setScale(particle_radius)
+            #particle.setColor(random.random(), random.random(), random.random(), 1)
+            particle = self.create_sphere(radius=particle_radius, num_lat=10, num_lon=20, color=(random.random(), random.random(), random.random(), 1))
             particle.reparentTo(self.render)
             self.particles.append(particle)
             self.particle_params.append((r, inclination, angle0, speed))
-
-            # # labels:   .. this doesn't seem to work at all?
-            # label_text = f"S{idx+1}"  # Or any string you want
-            # text_node = TextNode(f"label{idx}")
-            # text_node.setText(label_text)
-            # text_node.setAlign(TextNode.ACenter)
-            # text_node.setTextColor(1, 1, 1, 1)
-            # # text_node.setCardColor(0, 0, 0, 0.5)  # Optional: background for contrast
-            # # text_node.setCardColor(1, 1, 1, 0.5)  # Opaque white background
-            # text_node.setCardColor(1, 0, 0, 1)
-            # text_node.setCardAsMargin(0.1, 0.1, 0.05, 0.05)
-            # text_node.setCardDecal(True)
-            # text_np = particle.attachNewNode(text_node)
-            # # text_np.setScale(1.0)
-            # # text_np.setScale(0.3 * self.earth.getScale().x)  # Make text larger
-            # # # text_np.setPos(0, 0, 0.15)  # Offset above the particle
-            # # text_np.setPos(0, 0, 0.15 * self.earth.getScale().x)
-            # text_np.setScale(1.0 * self.earth.getScale().x)  # Try 0.5 or even 1.0 for testing
-            # # print(self.earth.getScale().x)
-            # text_np.setPos(0, 0, 1.0 * self.earth.getScale().x)  # Raise it higher above the particle
-            # text_np.setTransparency(True)
-            # text_np.setBin('fixed', 0)
-            # # text_np.setRenderModeThickness(2)  # Optional: makes lines thicker if using wireframe
-            # self.particle_labels.append(text_np)
 
             label = OnscreenText(
                 text=f"S{idx+1}",
@@ -557,6 +415,9 @@ class EarthOrbitApp(ShowBase):
                 align=TextNode.ACenter
             )
             self.particle_labels.append(label)
+
+        self.labels_visible = True
+        self.accept("s", self.toggle_particle_labels)
 
         # --- Connect some particles with lines ---
         self.connect_count = 5  # Number of particles to connect
@@ -591,6 +452,78 @@ class EarthOrbitApp(ShowBase):
         self.movie_fps = 60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
+    # def on_window_event(self, window):
+    #     self.update_hud_position()
+
+    def toggle_particle_labels(self):
+        self.labels_visible = not self.labels_visible
+        for label in self.particle_labels:
+            if self.labels_visible:
+                label.show()
+            else:
+                label.hide()
+
+    def create_sphere(self, radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
+        format = GeomVertexFormat.getV3n3c4t2()
+        vdata = GeomVertexData('sphere', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color_writer = GeomVertexWriter(vdata, 'color')
+        texcoord = GeomVertexWriter(vdata, 'texcoord')
+        tris = GeomTriangles(Geom.UHStatic)
+
+        for i in range(num_lat + 1):
+            theta = math.pi * i / num_lat
+            sin_theta = math.sin(theta)
+            cos_theta = math.cos(theta)
+            v = i / num_lat  # V coordinate
+            for j in range(num_lon + 1):
+                phi = 2 * math.pi * j / num_lon
+                sin_phi = math.sin(phi)
+                cos_phi = math.cos(phi)
+                x = radius * sin_theta * cos_phi
+                y = radius * sin_theta * sin_phi
+                z = radius * cos_theta
+                u = j / num_lon  # U coordinate
+                vertex.addData3(x, y, z)
+                normal.addData3(Vec3(x, y, z).normalized())
+                color_writer.addData4(*color)
+                texcoord.addData2(u, 1 - v)
+
+        for i in range(num_lat):
+            for j in range(num_lon):
+                first = i * (num_lon + 1) + j
+                second = first + num_lon + 1
+                tris.addVertices(first, second, first + 1)
+                tris.addVertices(second, second + 1, first + 1)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('sphere')
+        node.addGeom(geom)
+        sphere_np = NodePath(node)
+        return sphere_np
+
+    def create_axes(self, body, length: int = 1.0, thickness: int = 3):
+        """coordinate axes"""
+        axes = LineSegs()
+        axes.setThickness(thickness)
+        # X axis (red)
+        axes.setColor(1, 0, 0, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(length, 0, 0)
+        # Y axis (green)
+        axes.setColor(0, 1, 0, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(0, length, 0)
+        # Z axis (blue)
+        axes.setColor(0, 0, 1, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(0, 0, length)
+        axes_np = body.attachNewNode(axes.create())
+        axes_np.setLightOff()
+        return axes_np
+
     def toggle_movie_recording(self):
         self.record_movie = not self.record_movie
         if self.record_movie:
@@ -603,13 +536,12 @@ class EarthOrbitApp(ShowBase):
                 self.movie_writer.close()
                 self.movie_writer = None
 
-    # def recenter_on_earth(self):
-    #     # Reset camera and trackball to look at Earth's center
-    #     self.trackball.node().setHpr(0, 0, 0)
-    #     self.trackball.node().setPos(0, 20, 0)
-    #     self.trackball.node().setOrigin(Point3(0, 20, 0))
-    #     self.camera.setPos(0, 0, 0)
-    #     self.camera.lookAt(0, 20, 0)
+    # def update_hud_position(self):
+    #     aspect = base.getAspectRatio()
+    #     # Multiply by aspect to keep text at the left edge
+    #     self.hud_text.setPos(-1.3 * (1 / aspect), 0.95)
+    #     if hasattr(self, "fps_text"):
+    #         self.fps_text.setPos(-1.3 * (1 / aspect), 0.90)
 
     ####################
     #---- try to have inertia spin on mouse drag.... not quite what i want but a start ....
@@ -691,24 +623,6 @@ class EarthOrbitApp(ShowBase):
 
     #             # Recenter the trackball's origin to the picked object
     #             self.trackball.node().setOrigin(pos)
-
-    def create_axes(self, length=0.3, thickness=2.0):
-        from panda3d.core import LineSegs, NodePath
-        segs = LineSegs()
-        segs.setThickness(thickness)
-        # X axis (red)
-        segs.setColor(1, 0, 0, 1)
-        segs.moveTo(0, 0, 0)
-        segs.drawTo(length, 0, 0)
-        # Y axis (green)
-        segs.setColor(0, 1, 0, 1)
-        segs.moveTo(0, 0, 0)
-        segs.drawTo(0, length, 0)
-        # Z axis (blue)
-        segs.setColor(0, 0, 1, 1)
-        segs.moveTo(0, 0, 0)
-        segs.drawTo(0, 0, length)
-        return NodePath(segs.create())
 
     def on_mouse_click(self):
         if self.mouseWatcherNode.hasMouse():
@@ -792,193 +706,9 @@ class EarthOrbitApp(ShowBase):
         arrow_np = NodePath(node)
         arrow_np.setTwoSided(True)
         # arrow_np.setBin('opaque', 10)
-
         arrow_np.setPos(0, 0, 0)  # by default, center at origin
 
         return arrow_np
-
-    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
-    #     """Create an arrow NodePath from start to end."""
-    #     # Compute direction and length
-    #     direction = end - start
-    #     length = direction.length()
-    #     if length == 0:
-    #         length = 1e-6  # Avoid division by zero
-    #         direction = Vec3(0, 1, 0)
-    #     else:
-    #         direction = direction.normalized()
-
-    #     shaft_length = length - head_length
-    #     if shaft_length < 0.1 * length:
-    #         shaft_length = 0.1 * length  # Ensure some shaft
-
-    #     # Build arrow along +Y
-    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
-
-    #     def rotation_quat(from_vec, to_vec):
-    #         from_vec = from_vec.normalized()
-    #         to_vec = to_vec.normalized()
-    #         dot = from_vec.dot(to_vec)
-    #         if dot > 0.9999:
-    #             return Quat.identQuat()
-    #         elif dot < -0.9999:
-    #             # 180 degree rotation around any perpendicular axis
-    #             perp = Vec3(1, 0, 0) if abs(from_vec.dot(Vec3(1,0,0))) < 0.99 else Vec3(0,1,0)
-    #             axis = from_vec.cross(perp).normalized()
-    #             quat = Quat()
-    #             quat.setFromAxisAngleRad(math.pi, axis)
-    #             return quat
-    #         else:
-    #             axis = from_vec.cross(to_vec).normalized()
-    #             angle = math.acos(dot)
-    #             quat = Quat()
-    #             quat.setFromAxisAngleRad(angle, axis)
-    #             return quat
-
-    #     # Compute rotation from +Y to desired direction
-    #     # from_y = Vec3(0, 1, 0)
-    #     # quat = from_y.rotationTo(direction)
-    #     # arrow_np.setQuat(quat)
-
-    #     # from_y = Vec3(0, 1, 0)
-    #     # quat = Quat()
-    #     # quat.setFromRotationVec(from_y, direction)
-
-    #     from_y = Vec3(0, 1, 0)
-    #     quat = rotation_quat(from_y, direction)
-    #     arrow_np.setQuat(quat)
-    #     # arrow_np.setQuat(quat)
-    #     arrow_np.setPos(start)
-    #     return arrow_np
-
-
-    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
-    #     """Create an arrow NodePath from start to end."""
-    #     direction = end - start
-    #     length = direction.length()
-    #     if length == 0:
-    #         length = 1e-6
-    #         direction = Vec3(0, 1, 0)
-    #     else:
-    #         direction = direction.normalized()
-
-    #     shaft_length = length - head_length
-    #     if shaft_length < 0.1 * length:
-    #         shaft_length = 0.1 * length
-
-    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
-
-    #     # Robust rotation from +Y to direction
-    #     from_y = Vec3(0, 1, 0)
-    #     to_vec = direction
-    #     dot = from_y.dot(to_vec)
-    #     if abs(dot - 1.0) < 1e-6:
-    #         quat = Quat.identQuat()
-    #     elif abs(dot + 1.0) < 1e-6:
-    #         # 180 degree rotation around any perpendicular axis
-    #         perp = Vec3(1, 0, 0) if abs(from_y.dot(Vec3(1,0,0))) < 0.99 else Vec3(0,1,0)
-    #         axis = from_y.cross(perp).normalized()
-    #         quat = Quat()
-    #         quat.setFromAxisAngleRad(math.pi, axis)
-    #     else:
-    #         axis = from_y.cross(to_vec)
-    #         axis.normalize()
-    #         angle = math.acos(dot)
-    #         quat = Quat()
-    #         quat.setFromAxisAngleRad(angle, axis)
-    #     arrow_np.setQuat(quat)
-    #     arrow_np.setPos(start)
-    #     return arrow_np
-
-    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
-    #     """Create an arrow NodePath from start to end using a look_at matrix."""
-    #     direction = end - start
-    #     length = direction.length()
-    #     if length == 0:
-    #         length = 1e-6
-    #         direction = Vec3(0, 1, 0)
-    #     else:
-    #         direction = direction.normalized()
-
-    #     shaft_length = length - head_length
-    #     if shaft_length < 0.1 * length:
-    #         shaft_length = 0.1 * length
-
-    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
-
-    #     # Build a look_at matrix: +Y points along 'direction'
-    #     # up = Vec3(0, 0, 1) if abs(direction.dot(Vec3(0, 0, 1))) < 0.99 else Vec3(1, 0, 0)
-    #     # mat = Mat4()
-    #     # mat.look_at(direction, up)
-    #     # arrow_np.setMat(mat)
-    #     # arrow_np.setPos(start)
-
-    #     arrow_np.setPos(start)
-    #     # Use a temporary NodePath to orient +Y to the desired direction
-    #     tmp = NodePath('tmp')
-    #     tmp.lookAt(start + direction)
-    #     arrow_np.setQuat(tmp.getQuat())
-
-    #     return arrow_np
-
-    # def _create_arrow_geometry(self, shaft_length, shaft_radius, head_length, head_radius, color):
-    #     """Helper: build arrow geometry along +Y axis."""
-    #     format = GeomVertexFormat.getV3n3c4()
-    #     vdata = GeomVertexData('arrow', format, Geom.UHStatic)
-    #     vertex = GeomVertexWriter(vdata, 'vertex')
-    #     normal = GeomVertexWriter(vdata, 'normal')
-    #     color_writer = GeomVertexWriter(vdata, 'color')
-    #     tris = GeomTriangles(Geom.UHStatic)
-    #     segments = 24
-
-    #     # Cylinder shaft
-    #     for i in range(segments + 1):
-    #         theta = 2 * math.pi * i / segments
-    #         x = shaft_radius * math.cos(theta)
-    #         z = shaft_radius * math.sin(theta)
-    #         # Bottom
-    #         vertex.addData3(x, 0, z)
-    #         normal.addData3(x, 0, z)
-    #         color_writer.addData4(*color)
-    #         # Top
-    #         vertex.addData3(x, shaft_length, z)
-    #         normal.addData3(x, 0, z)
-    #         color_writer.addData4(*color)
-    #     for i in range(segments):
-    #         a = i * 2
-    #         b = a + 1
-    #         c = ((i + 1) % segments) * 2
-    #         d = c + 1
-    #         tris.addVertices(a, b, d)
-    #         tris.addVertices(a, d, c)
-
-    #     # Cone head
-    #     base_idx = (segments + 1) * 2
-    #     tip = Vec3(0, shaft_length + head_length, 0)
-    #     for i in range(segments + 1):
-    #         theta = 2 * math.pi * i / segments
-    #         x = head_radius * math.cos(theta)
-    #         z = head_radius * math.sin(theta)
-    #         vertex.addData3(x, shaft_length, z)
-    #         normal_vec = Vec3(x, head_length * 0.5, z).normalized()
-    #         normal.addData3(normal_vec)
-    #         color_writer.addData4(*color)
-    #     vertex.addData3(tip)
-    #     normal.addData3(0, 1, 0)
-    #     color_writer.addData4(*color)
-    #     tip_idx = vertex.getWriteRow() - 1
-    #     for i in range(segments):
-    #         a = base_idx + i
-    #         b = base_idx + (i + 1) % segments
-    #         tris.addVertices(a, b, tip_idx)
-
-    #     geom = Geom(vdata)
-    #     geom.addPrimitive(tris)
-    #     node = GeomNode('arrow')
-    #     node.addGeom(geom)
-    #     arrow_np = NodePath(node)
-    #     arrow_np.setTwoSided(True)
-    #     return arrow_np
 
     def pause_scene_animation(self):
         if self.scene_anim_running:
@@ -1034,18 +764,6 @@ class EarthOrbitApp(ShowBase):
         t2 = (-b + discriminant) / (2 * a)
         # Check if intersection is within the segment
         return (0 <= t1 <= 1) or (0 <= t2 <= 1)
-
-    # def orbit_task(self, task):
-    #     angle = task.time * self.orbit_speed
-    #     inclination = math.radians(45)  # 45 degree inclination
-    #     x = self.orbit_radius * math.cos(angle)
-    #     y = self.orbit_radius * math.sin(angle)
-    #     z = 0
-    #     # Rotate around X axis for inclination
-    #     y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-    #     z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-    #     self.satellite.setPos(x, 20 + y_incl, z_incl)
-    #     return Task.cont
 
     def draw_translucent_manifold(self, points, tube_radius=0.15, num_sides=16, color=(0.2, 0.8, 1, 0.25)):
         """Draw a translucent tube (manifold) around a list of 3D points."""
@@ -1134,9 +852,9 @@ class EarthOrbitApp(ShowBase):
         earth_center = Point3(0, 0, 0)
         v = sat_pos - earth_center
         v_len = v.length()
-        earth_radius = self.earth.getScale().x / 2
+        #earth_radius = self.earth.getScale().x / 2
         if v_len != 0:
-            surface_point = earth_center + v * (earth_radius / v_len)
+            surface_point = earth_center + v * (EARTH_RADIUS / v_len)
         else:
             surface_point = earth_center
 
@@ -1207,14 +925,10 @@ class EarthOrbitApp(ShowBase):
         # Project satellite position onto Earth's surface
         sat_vec = sat_pos - Point3(0, 0, 0)
         if sat_vec.length() != 0:
-            ground_point = sat_vec.normalized() * (self.earth.getScale().x * 2.01)
+            ground_point = sat_vec.normalized() * (EARTH_RADIUS + .001)
             # Convert to Earth's local coordinates
             ground_point_local = self.earth.getRelativePoint(self.render, ground_point)
             self.groundtrack_trace.append(ground_point_local)
-            # Compute longitude and latitude
-            # lon = math.atan2(ground_point.getY(), ground_point.getX())
-            # lat = math.asin(ground_point.getZ() / self.earth.getScale().x)
-            # self.groundtrack_trace.append((lon, lat))
 
             # uncomment to make it a trace:
             if len(self.groundtrack_trace) > self.groundtrack_length:
@@ -1231,17 +945,6 @@ class EarthOrbitApp(ShowBase):
                     segs.moveTo(pt)
                 else:
                     segs.drawTo(pt)
-            # for i, (lon, lat) in enumerate(self.groundtrack_trace):
-            #     x = self.earth.getScale().x * math.cos(lat) * math.cos(lon)
-            #     y = self.earth.getScale().x * math.cos(lat) * math.sin(lon)
-            #     z = self.earth.getScale().x * math.sin(lat)
-            #     pt = Point3(x, y, z)
-            #     alpha = i / max(1, len(self.groundtrack_trace) - 1)  # Avoid division by zero
-            #     segs.setColor(1, 0.5, 0, alpha)
-            #     if i == 0:
-            #         segs.moveTo(pt)
-            #     else:
-            #         segs.drawTo(pt)
             self.groundtrack_node.attachNewNode(segs.create())
             self.groundtrack_node.setTransparency(True)
 
@@ -1252,34 +955,6 @@ class EarthOrbitApp(ShowBase):
             img = np.flipud(img)  # Flip vertically
             self.movie_writer.append_data(img)
 
-        # # Remove previous HUD groundtrack
-        # self.groundtrack_hud_node.node().removeAllChildren()
-        # segs = LineSegs()
-        # segs.setThickness(2.0)
-        # segs.setColor(1, 0.5, 0, 1)  # Orange
-
-        # # Draw groundtrack on HUD
-        # for i, pt in enumerate(self.groundtrack_trace):
-        #     # Convert 3D ground point to longitude/latitude
-        #     lon = math.atan2(pt.getY(), pt.getX())
-        #     lat = math.asin(pt.getZ() / self.earth.getScale().x)
-        #     # Map lon/lat to HUD image coordinates (-0.25 to +0.25 for both axes)
-        #     x = (lon / math.pi) * 0.25
-        #     y = (lat / (0.5 * math.pi)) * 0.25
-        #     if i == 0:
-        #         segs.moveTo(x, y, 0)
-        #     else:
-        #         segs.drawTo(x, y, 0)
-        # # for i, (lon, lat) in enumerate(self.groundtrack_trace):
-        # #     # Map lon/lat to HUD image coordinates (-0.25 to +0.25 for both axes)
-        # #     x = (lon / math.pi) * 0.25
-        # #     y = (lat / (0.5 * math.pi)) * 0.25
-        # #     if i == 0:
-        # #         segs.moveTo(x, y, 0)
-        # #     else:
-        # #         segs.drawTo(x, y, 0)
-        # self.groundtrack_hud_node.attachNewNode(segs.create())
-
         return Task.cont
 
     def rotate_earth_task(self, task):
@@ -1289,9 +964,6 @@ class EarthOrbitApp(ShowBase):
         # which messes up all the child objects.
         self.grid_np.setH(self.earth.getH())  # <-- rotate the lat/lon grid with the earth
         self.groundtrack_node.setH(self.earth.getH())
-        # self.x_arrow.setH(self.earth.getH())
-        # self.y_arrow.setH(self.earth.getH())
-        # self.z_arrow.setH(self.earth.getH())
         self.axes_np.setH(self.earth.getH())
 
         # Update sun direction in Earth's local space
@@ -1359,36 +1031,13 @@ class EarthOrbitApp(ShowBase):
             self.trace_nodes[i] = self.render.attachNewNode(segs.create())
             self.trace_nodes[i].setTransparency(True)
 
-
-
-            # pos_3d = particle.getPos(self.render)
-            # p3 = Point3()
-            # if base.camLens.project(pos_3d, p3):
-            #     self.particle_labels[i].setPos(p3.x, p3.y)
-            #     self.particle_labels[i].show()
-            # else:
-            #     self.particle_labels[i].hide()
-
-            # Project 3D position to 2D screen space for label
-            # pos_3d = particle.getPos(self.render)
-            # p3 = Point3()
-            # if self.camLens.project(pos_3d, p3):
-            #     # Convert from [-1,1] range to Panda's onscreen coordinates
-            #     x = p3.x * (base.getAspectRatio())
-            #     y = p3.y
-            #     self.particle_labels[i].setPos(x, y + 0.01)  # Offset label above particle
-            #     self.particle_labels[i].show()
-            # else:
-            #     self.particle_labels[i].hide()
-
             pos_3d = particle.getPos(self.render)
             pos_cam = self.camera.getRelativePoint(self.render, pos_3d)
             p3 = Point3()
-            if self.camLens.project(pos_cam, p3):
-                # Convert NDC [-1,1] to render2d [-1,1] (x) and [-1,1] (y)
-                x = p3.x * base.getAspectRatio()   # / or *   ??
+            if self.labels_visible and self.camLens.project(pos_cam, p3):
+                x = p3.x * base.getAspectRatio()
                 y = p3.y
-                self.particle_labels[i].setPos(x, y + 0.04)  # Offset label above particle
+                self.particle_labels[i].setPos(x, y + 0.04)
                 self.particle_labels[i].show()
             else:
                 self.particle_labels[i].hide()
@@ -1400,42 +1049,12 @@ class EarthOrbitApp(ShowBase):
                 self.particle_labels[i]['fg'] = (0, 0, 0, 1)  # Black for others
                 self.particle_labels[i]['bg'] = (1, 1, 1, 0.5)
 
-            # Make label face the camera  [makes it backwards?]
-            # self.particle_labels[i].lookAt(self.camera)
-
-        # pos_3d = particle.getPos(self.render)
-        # p3 = self.cam.getRelativePoint(self.render, pos_3d)
-        # p2 = Point3()
-        # if self.camLens.project(p3, p2):
-        #     r2d = Point3()
-        #     self.cam.node().getDisplayRegion(0).getWindow().getRelativePoint(self.render2d, r2d)
-        #     x = p2.x * (base.getAspectRatio())
-        #     y = p2.y
-        #     self.particle_labels[i].setPos(x, y)
-        #     self.particle_labels[i].show()
-        # else:
-        #     self.particle_labels[i].hide()
-
-        # (existing code for connecting lines...)
-        # self.particle_lines = LineSegs()
-        # self.particle_lines.setThickness(1.5)
-        # self.particle_lines.setColor(1, 0, 1, 1)
-        # for i in range(self.connect_count):
-        #     for j in range(i + 1, self.connect_count):
-        #         pos_i = self.particles[i].getPos()
-        #         pos_j = self.particles[j].getPos()
-        #         self.particle_lines.moveTo(pos_i)
-        #         self.particle_lines.drawTo(pos_j)
-        # self.lines_np.removeNode()
-        # self.lines_np = NodePath(self.particle_lines.create())
-        # self.lines_np.reparentTo(self.render)
-
         # hide the ones that intersect the earth:
         self.particle_lines = LineSegs()
         self.particle_lines.setThickness(1.5)
         self.particle_lines.setColor(1, 0, 1, 1)
         earth_center = Point3(0, 0, 0)
-        earth_radius = self.earth.getScale().x
+        earth_radius = EARTH_RADIUS #self.earth.getScale().x
         for i in range(self.connect_count):
             for j in range(i + 1, self.connect_count):
                 pos_i = self.particles[i].getPos()
@@ -1457,18 +1076,13 @@ class EarthOrbitApp(ShowBase):
         site_lines.setColor(0, 1, 0, 1)  # Green
         site_pos = self.site_np.getPos(self.render)
         earth_center = Point3(0, 0, 0)
-        earth_radius = self.earth.getScale().x
+        earth_radius = EARTH_RADIUS  #self.earth.getScale().x
         for particle in self.particles:
             particle_pos = particle.getPos(self.render)
             # Only draw if line does not intersect the Earth
             if not self.line_intersects_sphere(site_pos, particle_pos, earth_center, earth_radius):
                 site_lines.moveTo(site_pos)
                 site_lines.drawTo(particle_pos)
-            #---add little axes to all the particles, this slows it way down---
-            # axes_np = self.create_axes(length=8.0, thickness=2.0)
-            # axes_np.reparentTo(particle)
-            # axes_np.setLightOff()
-            #-----------------
 
         self.site_lines_np = self.render.attachNewNode(site_lines.create())
         self.site_lines_np.setTransparency(True)
@@ -1756,6 +1370,14 @@ class EarthOrbitApp(ShowBase):
 
         self.taskMgr.add(orbit_anim_task, "OrbitAnimTask")
 
+    def moon_satellite_orbit_task(self, task):
+        # Orbit the satellite around the Moon's local +Z axis
+        angle = task.time * self.moon_satellite_orbit_speed
+        x = self.moon_satellite_orbit_radius * math.cos(angle)
+        y = self.moon_satellite_orbit_radius * math.sin(angle)
+        z = 0
+        self.moon_satellite.setPos(x, y, z)
+        return Task.cont
 
 app = EarthOrbitApp()
 

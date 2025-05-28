@@ -16,6 +16,7 @@ Keys:
  * 'a' -- pause/reset the animation
  * space -- recenter the camera view
  * 'r' -- start/stop `.mp4` movie capture
+ * 's' -- toggle display of the labels
 
 ### See also
 
