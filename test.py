@@ -394,7 +394,7 @@ class EarthOrbitApp(ShowBase):
 
         # --- Visibility cone setup ---
         self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
-        self.visibility_cone_angle = math.radians(10)  # cone half-angle in radians
+        self.visibility_cone_angle = math.radians(5)  # cone half-angle in radians
         self.visibility_cone_segments = 24  # smoothness of the cone
 
         # Draw the orbit path
