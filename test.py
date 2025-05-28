@@ -1,5 +1,8 @@
 
 import sys
+import json
+import math
+import random
 
 # print('importing qt')
 # # these imports are crashing! ... something is wrong here...
@@ -11,16 +14,16 @@ import sys
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 
+from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode, GeomTriangles, NodePath, Vec3, Vec4, Mat4
+import math
+
 from panda3d.core import Point3, TextureStage, AmbientLight, DirectionalLight, LVector3
 from direct.task import Task
-import math
 from panda3d.core import Point3
-import random
 from panda3d.core import loadPrcFileData
 from panda3d.core import LineSegs, NodePath
 from panda3d.core import TextNode
 from panda3d.core import GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode, GeomTriangles, GeomVertexWriter, GeomVertexRewriter, GeomLinestrips, Vec3, Vec4
-# from panda3d.physics import *
 from panda3d.core import CardMaker, TransparencyAttrib
 
 from direct.gui.OnscreenText import OnscreenText
@@ -33,6 +36,8 @@ from direct.gui.OnscreenImage import OnscreenImage
 from panda3d.core import TransparencyAttrib
 from panda3d.core import Shader, TextureStage
 from panda3d.core import Mat3
+from panda3d.core import Quat
+from panda3d.core import CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, BitMask32
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -44,6 +49,7 @@ class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
+
         if parent_window is not None:
             props = WindowProperties()
             props.setParentWindow(parent_window)
@@ -54,6 +60,18 @@ class EarthOrbitApp(ShowBase):
         # self.accept("mouse1-double", self.recenter_on_earth)  # doesn't work?
         self.accept("space", self.recenter_on_earth)
 
+        self.accept("a", self.toggle_scene_animation)  # Press 'a' to toggle all animation
+
+        self.scene_anim_running = True
+        self.scene_anim_task_names = [
+            "OrbitTask",
+            "MoonOrbitTask",
+            "RotateEarthTask",
+            "ParticlesOrbitTask",
+            # "OrbitAnimTask",
+            # "HyperbolicOrbitTask",
+            # Add any other task names you want to pause/resume
+]
         # inertia:
         # self.last_mouse_pos = None
         # self.angular_velocity = 0.0
@@ -135,6 +153,8 @@ class EarthOrbitApp(ShowBase):
         # tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
         # self.earth.setTexture(tex, 1)
 
+        self.earth.setCollideMask(BitMask32.bit(1))
+
         day_tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
         night_tex = self.loader.loadTexture("models/2k_earth_nightmap.jpg")
         self.earth.setTexture(day_tex, 1)
@@ -197,6 +217,7 @@ class EarthOrbitApp(ShowBase):
         self.moon = self.loader.loadModel("models/planet_sphere")
         self.moon.reparentTo(self.render)
         self.moon.setScale(0.5)  # Relative to Earth (Earth=1, Moon~0.27)
+        # self.moon.setScale(0.5, 0.5, 0.3)  # X, Y, Z scale - ellipsoidal shape
         self.moon.setPos(0, 0, 0)
         tex = self.loader.loadTexture("models/lroc_color_poles_1k.jpg")
         self.moon.setTexture(tex, 1)
@@ -209,6 +230,21 @@ class EarthOrbitApp(ShowBase):
         self.moon.setLightOff()
         self.moon.setLight(dlnp)
         self.moon.setShaderInput("sundir", sun_dir)
+
+        self.moon.setCollideMask(BitMask32.bit(1))
+
+        # # Draw an arrow from Earth center to Moon
+        # self.earth_to_moon_arrow = self.create_arrow(
+        #     start=Vec3(0, 0, 0),
+        #     end=self.moon.getPos(self.render),
+        #     shaft_radius=0.08,
+        #     head_length=0.4,
+        #     head_radius=0.18,
+        #     color=(1, 1, 0, 1)
+        # )
+        # self.earth_to_moon_arrow.reparentTo(self.render)
+        # self.earth_to_moon_arrow.setLightOff()
+        # self.earth_to_moon_arrow.setLight(self.dlnp)
 
         # --- Moon coordinate axes ---
         moon_axes = LineSegs()
@@ -228,6 +264,8 @@ class EarthOrbitApp(ShowBase):
         moon_axes.drawTo(0, 0, axis_len)
 
         self.moon_axes_np = self.moon.attachNewNode(moon_axes.create())
+        self.moon_axes_np.setLightOff()
+
 
         # # Add a small sphere as the satellite
         # self.satellite = self.loader.loadModel("models/planet_sphere")
@@ -377,74 +415,29 @@ class EarthOrbitApp(ShowBase):
         # self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
         # self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
 
-        # #--------------------------------------------
-        # # Draw Earth-fixed coordinate axes (origin at Earth's center)
-        # axes = LineSegs()
-        # axes.setThickness(3.0)
-        axis_length = self.earth.getScale().x * 2  # Earth radius * 2
-
-        # # X axis (red)
-        # axes.setColor(1, 1, 1, 0.6)
-        # axes.moveTo(0, 0, 0)
-        # axes.drawTo(axis_length, 0, 0)
-
-        # # Y axis (green)
-        # axes.setColor(1, 1, 1, 0.6)
-        # axes.moveTo(0, 0, 0)
-        # axes.drawTo(0, axis_length, 0)
-
-        # # Z axis (blue)
-        # axes.setColor(1, 1, 1, 0.6)
-        # axes.moveTo(0, 0, 0)
-        # axes.drawTo(0, 0, axis_length)
-
-        # # axes_np = self.render.attachNewNode(axes.create())
-        # axes_np = self.earth.attachNewNode(axes.create())
-
-        # --- Arrowheads ---
-        arrow_scale = 0.2 * axis_length  # Adjust size as needed
+        #--------------------------------------------
+        # Draw Earth-fixed coordinate axes (origin at Earth's center)
 
         # lighting for the arrows only:
         arrow_ambient = AmbientLight("arrow_ambient")
-        arrow_ambient.setColor((0.2, 0.2, 0.2, 1))  # Brighter ambient just for arrow
+        arrow_ambient.setColor((0.3, 0.3, 0.3, 1))  # Brighter ambient just for arrow
         arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
 
-        # Y arrowhead
-        self.x_arrow = self.loader.loadModel("models/arrow")
-        self.x_arrow.reparentTo(self.earth)
-        self.x_arrow.setPos(0, 0, 0)
-        self.x_arrow.setHpr(0, 90, 0)  # Points along +Y
-        self.x_arrow.setScale(arrow_scale)
-        self.x_arrow.setColor(0, 1, 0, 1)
-        self.x_arrow.setLightOff()  # Remove all inherited lights
-        self.x_arrow.reparentTo(self.render)
-        self.x_arrow.setLight(self.dlnp)            # Sunlight (directional)
-        self.x_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
+        self.axes_np = self.render.attachNewNode("axes")
+        self.axes_np.setPos(0, 0, 0)
 
-        # X arrowhead
-        self.y_arrow = self.loader.loadModel("models/arrow")
-        self.y_arrow.reparentTo(self.earth)
-        self.y_arrow.setPos(0, 0, 0)
-        self.y_arrow.setHpr(180, 0, -90)  # Points along +X
-        self.y_arrow.setScale(arrow_scale)
-        self.y_arrow.setColor(0, 1, 0, 1)
-        self.y_arrow.reparentTo(self.render)
-        self.y_arrow.setLightOff()  # Remove all inherited lights
-        self.y_arrow.setLight(self.dlnp)            # Sunlight (directional)
-        self.y_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
-
-        # Z arrowhead
-        self.z_arrow = self.loader.loadModel("models/arrow")
-        self.z_arrow.reparentTo(self.earth)
-        self.z_arrow.setPos(0, 0, 0)
-        self.z_arrow.setHpr(180, 0, 0)  # Points along +Z
-        self.z_arrow.setScale(arrow_scale)
-        self.z_arrow.setColor(0, 0, 1, 1)
-        self.z_arrow.setLightOff()  # Remove all inherited lights
-        self.z_arrow.reparentTo(self.render)
-        self.z_arrow.setLight(self.dlnp)            # Sunlight (directional)
-        self.z_arrow.setLight(arrow_ambient_np)  # Apply only this ambient light
-
+        self.x_arrow = self.create_arrow()
+        self.x_arrow.setHpr(90, 0, 0)    # +X axis
+        self.y_arrow = self.create_arrow()
+        self.y_arrow.setHpr(180, 0, 0)   # +Y axis
+        self.z_arrow = self.create_arrow()
+        self.z_arrow.setHpr(0, 90, 0)    # +Z axis
+        for a in [self.x_arrow, self.y_arrow, self.z_arrow]:
+            a.reparentTo(self.axes_np)
+            a.setLightOff()               # Remove all inherited lights
+            a.setLight(self.dlnp)         # Sunlight (directional)
+            a.setLight(arrow_ambient_np)  # Apply only this ambient light
+        # self.earth_to_moon_arrow.setLight(arrow_ambient_np)
 
         # #--------------------------------------------
 
@@ -581,6 +574,8 @@ class EarthOrbitApp(ShowBase):
 
         self.manifold_np = None
 
+        # self.setup_mouse_picker()
+
     # def recenter_on_earth(self):
     #     # Reset camera and trackball to look at Earth's center
     #     self.trackball.node().setHpr(0, 0, 0)
@@ -624,6 +619,346 @@ class EarthOrbitApp(ShowBase):
     #         self.angular_velocity = 0.0
     #         return Task.done
     ####################
+
+    # def setup_mouse_picker(self):
+    #     self.picker = CollisionTraverser()
+    #     self.pq = CollisionHandlerQueue()
+    #     self.pickerNode = CollisionNode('mouseRay')
+    #     self.pickerNP = self.camera.attachNewNode(self.pickerNode)
+    #     self.pickerNode.setFromCollideMask(BitMask32.bit(1))
+    #     self.pickerRay = CollisionRay()
+    #     self.pickerNode.addSolid(self.pickerRay)
+    #     self.picker.addCollider(self.pickerNP, self.pq)
+    #     self.accept('mouse1', self.on_mouse_click)
+
+    # def on_mouse_click(self):
+    #     if self.mouseWatcherNode.hasMouse():
+    #         mpos = self.mouseWatcherNode.getMouse()
+    #         self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
+    #         self.picker.traverse(self.render)
+    #         if self.pq.getNumEntries() > 0:
+    #             self.pq.sortEntries()
+    #             pickedObj = self.pq.getEntry(0).getIntoNodePath()
+    #             # Move camera to look at the picked object's position
+    #             pos = pickedObj.getPos(self.render)
+    #             self.camera.lookAt(pos)
+    #             # Optionally, move the camera closer/farther as needed
+    # def on_mouse_click(self):
+    #     if self.mouseWatcherNode.hasMouse():
+    #         mpos = self.mouseWatcherNode.getMouse()
+    #         self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
+    #         self.picker.traverse(self.render)
+    #         if self.pq.getNumEntries() > 0:
+    #             self.pq.sortEntries()
+    #             pickedObj = self.pq.getEntry(0).getIntoNodePath()
+    #             pos = pickedObj.getPos(self.render)
+
+    #             # Move camera to a fixed distance from the object, along the current camera direction
+    #             cam_vec = self.camera.getQuat(self.render).getForward()
+    #             distance = (self.camera.getPos(self.render) - pos).length()
+    #             if distance < 1.0:
+    #                 distance = 10.0  # fallback if too close
+    #             new_cam_pos = pos - cam_vec * distance
+    #             self.camera.setPos(new_cam_pos)
+    #             self.camera.lookAt(pos)
+
+    #             # Recenter the trackball's origin to the picked object
+    #             self.trackball.node().setOrigin(pos)
+
+    def on_mouse_click(self):
+        if self.mouseWatcherNode.hasMouse():
+            mpos = self.mouseWatcherNode.getMouse()
+            self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
+            self.picker.traverse(self.render)
+            if self.pq.getNumEntries() > 0:
+                self.pq.sortEntries()
+                pickedObj = self.pq.getEntry(0).getIntoNodePath()
+                pos = pickedObj.getPos(self.render)
+
+                # Move the trackball node to keep the same distance from the object
+                distance = (self.camera.getPos(self.render) - pos).length()
+                if distance < 1.0:
+                    distance = 10.0  # fallback if too close
+
+                # Set the new origin (center of rotation)
+                self.trackball.node().setOrigin(pos)
+                # Move the trackball node's position so the camera stays at the same distance
+                cam_vec = self.camera.getQuat(self.render).getForward()
+                self.trackball.node().setPos(pos - cam_vec * distance)
+                # Optionally reset HPR if you want to face the object directly
+                self.trackball.node().setHpr(0, 0, 0)
+
+    def create_arrow(self, shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
+        """Create an arrow NodePath pointing along +Y."""
+        # Shaft (cylinder)
+        format = GeomVertexFormat.getV3n3c4()
+        vdata = GeomVertexData('arrow', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color_writer = GeomVertexWriter(vdata, 'color')
+        tris = GeomTriangles(Geom.UHStatic)
+        segments = 24
+
+        # Cylinder shaft
+        for i in range(segments + 1):
+            theta = 2 * math.pi * i / segments
+            x = shaft_radius * math.cos(theta)
+            z = shaft_radius * math.sin(theta)
+            # Bottom
+            vertex.addData3(x, 0, z)
+            normal.addData3(x, 0, z)
+            color_writer.addData4(*color)
+            # Top
+            vertex.addData3(x, shaft_length, z)
+            normal.addData3(x, 0, z)
+            color_writer.addData4(*color)
+        for i in range(segments):
+            a = i * 2
+            b = a + 1
+            c = ((i + 1) % segments) * 2
+            d = c + 1
+            tris.addVertices(a, b, d)
+            tris.addVertices(a, d, c)
+
+        # Cone head
+        base_idx = (segments + 1) * 2
+        tip = Vec3(0, shaft_length + head_length, 0)
+        for i in range(segments + 1):
+            theta = 2 * math.pi * i / segments
+            x = head_radius * math.cos(theta)
+            z = head_radius * math.sin(theta)
+            vertex.addData3(x, shaft_length, z)
+            normal_vec = Vec3(x, head_length * 0.5, z).normalized()
+            normal.addData3(normal_vec)
+            color_writer.addData4(*color)
+        vertex.addData3(tip)
+        normal.addData3(0, 1, 0)
+        color_writer.addData4(*color)
+        tip_idx = vertex.getWriteRow() - 1
+        for i in range(segments):
+            a = base_idx + i
+            b = base_idx + (i + 1) % segments
+            tris.addVertices(a, b, tip_idx)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('arrow')
+        node.addGeom(geom)
+        arrow_np = NodePath(node)
+        arrow_np.setTwoSided(True)
+
+        arrow_np.setPos(0, 0, 0)  # by default, center at origin
+
+        return arrow_np
+
+    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
+    #     """Create an arrow NodePath from start to end."""
+    #     # Compute direction and length
+    #     direction = end - start
+    #     length = direction.length()
+    #     if length == 0:
+    #         length = 1e-6  # Avoid division by zero
+    #         direction = Vec3(0, 1, 0)
+    #     else:
+    #         direction = direction.normalized()
+
+    #     shaft_length = length - head_length
+    #     if shaft_length < 0.1 * length:
+    #         shaft_length = 0.1 * length  # Ensure some shaft
+
+    #     # Build arrow along +Y
+    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
+
+    #     def rotation_quat(from_vec, to_vec):
+    #         from_vec = from_vec.normalized()
+    #         to_vec = to_vec.normalized()
+    #         dot = from_vec.dot(to_vec)
+    #         if dot > 0.9999:
+    #             return Quat.identQuat()
+    #         elif dot < -0.9999:
+    #             # 180 degree rotation around any perpendicular axis
+    #             perp = Vec3(1, 0, 0) if abs(from_vec.dot(Vec3(1,0,0))) < 0.99 else Vec3(0,1,0)
+    #             axis = from_vec.cross(perp).normalized()
+    #             quat = Quat()
+    #             quat.setFromAxisAngleRad(math.pi, axis)
+    #             return quat
+    #         else:
+    #             axis = from_vec.cross(to_vec).normalized()
+    #             angle = math.acos(dot)
+    #             quat = Quat()
+    #             quat.setFromAxisAngleRad(angle, axis)
+    #             return quat
+
+    #     # Compute rotation from +Y to desired direction
+    #     # from_y = Vec3(0, 1, 0)
+    #     # quat = from_y.rotationTo(direction)
+    #     # arrow_np.setQuat(quat)
+
+    #     # from_y = Vec3(0, 1, 0)
+    #     # quat = Quat()
+    #     # quat.setFromRotationVec(from_y, direction)
+
+    #     from_y = Vec3(0, 1, 0)
+    #     quat = rotation_quat(from_y, direction)
+    #     arrow_np.setQuat(quat)
+    #     # arrow_np.setQuat(quat)
+    #     arrow_np.setPos(start)
+    #     return arrow_np
+
+
+    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
+    #     """Create an arrow NodePath from start to end."""
+    #     direction = end - start
+    #     length = direction.length()
+    #     if length == 0:
+    #         length = 1e-6
+    #         direction = Vec3(0, 1, 0)
+    #     else:
+    #         direction = direction.normalized()
+
+    #     shaft_length = length - head_length
+    #     if shaft_length < 0.1 * length:
+    #         shaft_length = 0.1 * length
+
+    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
+
+    #     # Robust rotation from +Y to direction
+    #     from_y = Vec3(0, 1, 0)
+    #     to_vec = direction
+    #     dot = from_y.dot(to_vec)
+    #     if abs(dot - 1.0) < 1e-6:
+    #         quat = Quat.identQuat()
+    #     elif abs(dot + 1.0) < 1e-6:
+    #         # 180 degree rotation around any perpendicular axis
+    #         perp = Vec3(1, 0, 0) if abs(from_y.dot(Vec3(1,0,0))) < 0.99 else Vec3(0,1,0)
+    #         axis = from_y.cross(perp).normalized()
+    #         quat = Quat()
+    #         quat.setFromAxisAngleRad(math.pi, axis)
+    #     else:
+    #         axis = from_y.cross(to_vec)
+    #         axis.normalize()
+    #         angle = math.acos(dot)
+    #         quat = Quat()
+    #         quat.setFromAxisAngleRad(angle, axis)
+    #     arrow_np.setQuat(quat)
+    #     arrow_np.setPos(start)
+    #     return arrow_np
+
+    # def create_arrow(self, start=Vec3(0, 0, 0), end=Vec3(0, 1, 0), shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
+    #     """Create an arrow NodePath from start to end using a look_at matrix."""
+    #     direction = end - start
+    #     length = direction.length()
+    #     if length == 0:
+    #         length = 1e-6
+    #         direction = Vec3(0, 1, 0)
+    #     else:
+    #         direction = direction.normalized()
+
+    #     shaft_length = length - head_length
+    #     if shaft_length < 0.1 * length:
+    #         shaft_length = 0.1 * length
+
+    #     arrow_np = self._create_arrow_geometry(shaft_length, shaft_radius, head_length, head_radius, color)
+
+    #     # Build a look_at matrix: +Y points along 'direction'
+    #     # up = Vec3(0, 0, 1) if abs(direction.dot(Vec3(0, 0, 1))) < 0.99 else Vec3(1, 0, 0)
+    #     # mat = Mat4()
+    #     # mat.look_at(direction, up)
+    #     # arrow_np.setMat(mat)
+    #     # arrow_np.setPos(start)
+
+    #     arrow_np.setPos(start)
+    #     # Use a temporary NodePath to orient +Y to the desired direction
+    #     tmp = NodePath('tmp')
+    #     tmp.lookAt(start + direction)
+    #     arrow_np.setQuat(tmp.getQuat())
+
+    #     return arrow_np
+
+    # def _create_arrow_geometry(self, shaft_length, shaft_radius, head_length, head_radius, color):
+    #     """Helper: build arrow geometry along +Y axis."""
+    #     format = GeomVertexFormat.getV3n3c4()
+    #     vdata = GeomVertexData('arrow', format, Geom.UHStatic)
+    #     vertex = GeomVertexWriter(vdata, 'vertex')
+    #     normal = GeomVertexWriter(vdata, 'normal')
+    #     color_writer = GeomVertexWriter(vdata, 'color')
+    #     tris = GeomTriangles(Geom.UHStatic)
+    #     segments = 24
+
+    #     # Cylinder shaft
+    #     for i in range(segments + 1):
+    #         theta = 2 * math.pi * i / segments
+    #         x = shaft_radius * math.cos(theta)
+    #         z = shaft_radius * math.sin(theta)
+    #         # Bottom
+    #         vertex.addData3(x, 0, z)
+    #         normal.addData3(x, 0, z)
+    #         color_writer.addData4(*color)
+    #         # Top
+    #         vertex.addData3(x, shaft_length, z)
+    #         normal.addData3(x, 0, z)
+    #         color_writer.addData4(*color)
+    #     for i in range(segments):
+    #         a = i * 2
+    #         b = a + 1
+    #         c = ((i + 1) % segments) * 2
+    #         d = c + 1
+    #         tris.addVertices(a, b, d)
+    #         tris.addVertices(a, d, c)
+
+    #     # Cone head
+    #     base_idx = (segments + 1) * 2
+    #     tip = Vec3(0, shaft_length + head_length, 0)
+    #     for i in range(segments + 1):
+    #         theta = 2 * math.pi * i / segments
+    #         x = head_radius * math.cos(theta)
+    #         z = head_radius * math.sin(theta)
+    #         vertex.addData3(x, shaft_length, z)
+    #         normal_vec = Vec3(x, head_length * 0.5, z).normalized()
+    #         normal.addData3(normal_vec)
+    #         color_writer.addData4(*color)
+    #     vertex.addData3(tip)
+    #     normal.addData3(0, 1, 0)
+    #     color_writer.addData4(*color)
+    #     tip_idx = vertex.getWriteRow() - 1
+    #     for i in range(segments):
+    #         a = base_idx + i
+    #         b = base_idx + (i + 1) % segments
+    #         tris.addVertices(a, b, tip_idx)
+
+    #     geom = Geom(vdata)
+    #     geom.addPrimitive(tris)
+    #     node = GeomNode('arrow')
+    #     node.addGeom(geom)
+    #     arrow_np = NodePath(node)
+    #     arrow_np.setTwoSided(True)
+    #     return arrow_np
+
+    def pause_scene_animation(self):
+        if self.scene_anim_running:
+            for name in self.scene_anim_task_names:
+                self.taskMgr.remove(name)
+            self.scene_anim_running = False
+
+    def resume_scene_animation(self):
+        if not self.scene_anim_running:
+            # Re-add all tasks (with correct function references)
+            self.taskMgr.add(self.orbit_task, "OrbitTask")
+            self.taskMgr.add(self.moon_orbit_task, "MoonOrbitTask")
+            self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
+            self.taskMgr.add(self.particles_orbit_task, "ParticlesOrbitTask")
+            # Only add if the relevant objects exist:
+            if hasattr(self, "animate_orbit_satellite") and hasattr(self, "orbit_satellite"):
+                self.taskMgr.add(self.animate_orbit_satellite, "OrbitAnimTask")
+            # if hasattr(self, "hyperbolic_orbit_task"):
+            #     self.taskMgr.add(self.hyperbolic_orbit_task, "HyperbolicOrbitTask")
+            self.scene_anim_running = True
+
+    def toggle_scene_animation(self):
+        if self.scene_anim_running:
+            self.pause_scene_animation()
+        else:
+            self.resume_scene_animation()
 
     def recenter_on_earth(self):
         # Reset camera and trackball to look at Earth's center
@@ -902,9 +1237,10 @@ class EarthOrbitApp(ShowBase):
         # which messes up all the child objects.
         self.grid_np.setH(self.earth.getH())  # <-- rotate the lat/lon grid with the earth
         self.groundtrack_node.setH(self.earth.getH())
-        self.x_arrow.setH(self.earth.getH())
-        self.y_arrow.setH(self.earth.getH())
-        self.z_arrow.setH(self.earth.getH())
+        # self.x_arrow.setH(self.earth.getH())
+        # self.y_arrow.setH(self.earth.getH())
+        # self.z_arrow.setH(self.earth.getH())
+        self.axes_np.setH(self.earth.getH())
 
         # Update sun direction in Earth's local space
         sun_dir_world = self.dlnp.getQuat(self.render).getForward()
@@ -1229,6 +1565,24 @@ class EarthOrbitApp(ShowBase):
         # sun_dir_local = self.moon.getQuat(self.render).conjugate().xform(sun_dir_world)
         # self.moon.setShaderInput("sundir", sun_dir_local)
 
+        # Update the Earth-to-Moon arrow
+        # moon_pos = self.moon.getPos(self.render)
+        # # Remove old geometry
+        # self.earth_to_moon_arrow.removeNode()
+        # # Create a new arrow with updated end point
+        # self.earth_to_moon_arrow = self.create_arrow(
+        #     start=Vec3(0, 0, 0),
+        #     end=moon_pos,
+        #     shaft_radius=0.05,
+        #     head_length=0.4,
+        #     head_radius=0.18,
+        #     color=(1, 1, 1, 0.5)
+        # )
+        # self.earth_to_moon_arrow.reparentTo(self.render)
+        # self.earth_to_moon_arrow.setLightOff()
+        # self.earth_to_moon_arrow.setLight(self.dlnp)
+        # self.earth_to_moon_arrow.setLight(self.render.find("**/arrow_ambient"))
+
         return Task.cont
 
     def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
@@ -1281,7 +1635,67 @@ class EarthOrbitApp(ShowBase):
         belt_np.setBin('transparent', 20)
         return belt_np
 
+    def load_orbit_from_json(self, filename):
+        with open(filename, "r") as f:
+            data = json.load(f)
+        options = data.get("options", {})
+        traj = data["trajectory"]
+        points = [Point3(p["x"], p["y"], p["z"]) for p in traj]
+        times = [p.get("t", i) for i, p in enumerate(traj)]
+        return points, times, options
+
+    def add_orbit_from_json(self, filename, color=(1, 0, 1, 1), thickness=2.0):
+        points, times, options = self.load_orbit_from_json(filename)
+        # Draw the orbit
+        segs = LineSegs()
+        segs.setThickness(thickness)
+        segs.setColor(*color)
+        for i, pt in enumerate(points):
+            if i == 0:
+                segs.moveTo(pt)
+            else:
+                segs.drawTo(pt)
+        orbit_np = self.render.attachNewNode(segs.create())
+        orbit_np.setTransparency(True)
+        orbit_np.setBin('opaque', 20)
+
+        # Animate if requested
+        if options.get("animate", False):
+            self.animate_orbit_satellite(points, times, options)
+        return orbit_np
+
+    def animate_orbit_satellite(self, points, times, options):
+        # Create a satellite model if not already present
+        if not hasattr(self, "orbit_satellite"):
+            self.orbit_satellite = self.loader.loadModel("models/planet_sphere")
+            self.orbit_satellite.setScale(0.12)
+            self.orbit_satellite.setColor(1, 0, 1, 1)
+            self.orbit_satellite.reparentTo(self.render)
+
+        speed = options.get("speed", 1.0)
+        loop = options.get("loop", True)
+        t_min, t_max = times[0], times[-1]
+
+        def orbit_anim_task(task):
+            t = (task.time * speed) % (t_max - t_min) + t_min if loop else min(task.time * speed + t_min, t_max)
+            # Find the segment
+            for i in range(len(times) - 1):
+                if times[i] <= t <= times[i+1]:
+                    # Linear interpolation
+                    alpha = (t - times[i]) / (times[i+1] - times[i])
+                    pos = points[i] * (1 - alpha) + points[i+1] * alpha
+                    self.orbit_satellite.setPos(pos)
+                    break
+            return task.cont if (loop or t < t_max) else task.done
+
+        self.taskMgr.add(orbit_anim_task, "OrbitAnimTask")
+
+
 app = EarthOrbitApp()
+
+# example reading trajectory from JSON file;
+# app.orbit_from_json_np = app.add_orbit_from_json("traj.json", color=(1, 0, 1, 1), thickness=2.0)
+
 app.run()
 
 # ---- attempt to use pyside6 ... isn't working yet ----
