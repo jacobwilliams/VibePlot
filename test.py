@@ -214,15 +214,19 @@ class EarthOrbitApp(ShowBase):
         moon_orbit_segs.setThickness(2)
         moon_orbit_segs.setColor(1, 0.5, 0, 1)  # Orange
         segments = 100
+        self.moon_satellite_inclination = math.radians(30)  # 30 degree inclination
         for i in range(segments + 1):
             angle = 2 * math.pi * i / segments
             x = self.moon_satellite_orbit_radius * math.cos(angle)
             y = self.moon_satellite_orbit_radius * math.sin(angle)
             z = 0
+            # Apply inclination (rotation around X axis)
+            y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
+            z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
             if i == 0:
-                moon_orbit_segs.moveTo(x, y, z)
+                moon_orbit_segs.moveTo(x, y_incl, z_incl)
             else:
-                moon_orbit_segs.drawTo(x, y, z)
+                moon_orbit_segs.drawTo(x, y_incl, z_incl)
         self.moon_satellite_orbit_np = self.moon.attachNewNode(moon_orbit_segs.create())
         # self.moon_satellite_orbit_np.setTransparency(True)
         self.moon_satellite_orbit_np.setLightOff()
@@ -303,8 +307,6 @@ class EarthOrbitApp(ShowBase):
                 gridlines.drawTo(plane_size, y, z)
             grid_np = self.render.attachNewNode(gridlines.create())
             grid_np.setTransparency(TransparencyAttrib.MAlpha)
-
-
 
         # Add orbit task
         self.orbit_radius = 4
@@ -452,6 +454,8 @@ class EarthOrbitApp(ShowBase):
         self.movie_fps = 60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
+        self.draw_axis_grid()
+
     # def on_window_event(self, window):
     #     self.update_hud_position()
 
@@ -462,6 +466,66 @@ class EarthOrbitApp(ShowBase):
                 label.show()
             else:
                 label.hide()
+
+    def draw_axis_grid(self):
+
+        axes = LineSegs()
+        axes.setThickness(3.0)
+        length = 8.0  # Adjust as needed
+
+        # X axis (red)
+        axes.setColor(1, 0, 0, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(length, 0, 0)
+        # Y axis (green)
+        axes.setColor(0, 1, 0, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(0, length, 0)
+        # Z axis (blue)
+        axes.setColor(0, 0, 1, 1)
+        axes.moveTo(0, 0, 0)
+        axes.drawTo(0, 0, length)
+
+        axes_np = self.render.attachNewNode(axes.create())
+        axes_np.setLightOff()
+        axes_np.setTwoSided(True)
+
+        grid = LineSegs()
+        grid.setThickness(1.0)
+        grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+
+        grid_size = 8.0  # Half-width of the grid cube
+        num_lines = 4    # Number of lines per axis
+        step = (2 * grid_size) / (num_lines - 1)
+
+        # Draw grid lines along X
+        for i in range(num_lines):
+            y = -grid_size + i * step
+            for j in range(num_lines):
+                z = -grid_size + j * step
+                grid.moveTo(-grid_size, y, z)
+                grid.drawTo(grid_size, y, z)
+
+        # Draw grid lines along Y
+        for i in range(num_lines):
+            x = -grid_size + i * step
+            for j in range(num_lines):
+                z = -grid_size + j * step
+                grid.moveTo(x, -grid_size, z)
+                grid.drawTo(x, grid_size, z)
+
+        # Draw grid lines along Z
+        for i in range(num_lines):
+            x = -grid_size + i * step
+            for j in range(num_lines):
+                y = -grid_size + j * step
+                grid.moveTo(x, y, -grid_size)
+                grid.drawTo(x, y, grid_size)
+
+        grid_np = self.render.attachNewNode(grid.create())
+        grid_np.setLightOff()
+        grid_np.setTwoSided(True)
+        grid_np.setTransparency(True)
 
     def create_sphere(self, radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
         format = GeomVertexFormat.getV3n3c4t2()
@@ -852,7 +916,6 @@ class EarthOrbitApp(ShowBase):
         earth_center = Point3(0, 0, 0)
         v = sat_pos - earth_center
         v_len = v.length()
-        #earth_radius = self.earth.getScale().x / 2
         if v_len != 0:
             surface_point = earth_center + v * (EARTH_RADIUS / v_len)
         else:
@@ -1054,7 +1117,7 @@ class EarthOrbitApp(ShowBase):
         self.particle_lines.setThickness(1.5)
         self.particle_lines.setColor(1, 0, 1, 1)
         earth_center = Point3(0, 0, 0)
-        earth_radius = EARTH_RADIUS #self.earth.getScale().x
+        earth_radius = EARTH_RADIUS
         for i in range(self.connect_count):
             for j in range(i + 1, self.connect_count):
                 pos_i = self.particles[i].getPos()
@@ -1076,7 +1139,7 @@ class EarthOrbitApp(ShowBase):
         site_lines.setColor(0, 1, 0, 1)  # Green
         site_pos = self.site_np.getPos(self.render)
         earth_center = Point3(0, 0, 0)
-        earth_radius = EARTH_RADIUS  #self.earth.getScale().x
+        earth_radius = EARTH_RADIUS
         for particle in self.particles:
             particle_pos = particle.getPos(self.render)
             # Only draw if line does not intersect the Earth
@@ -1371,12 +1434,14 @@ class EarthOrbitApp(ShowBase):
         self.taskMgr.add(orbit_anim_task, "OrbitAnimTask")
 
     def moon_satellite_orbit_task(self, task):
-        # Orbit the satellite around the Moon's local +Z axis
         angle = task.time * self.moon_satellite_orbit_speed
         x = self.moon_satellite_orbit_radius * math.cos(angle)
         y = self.moon_satellite_orbit_radius * math.sin(angle)
         z = 0
-        self.moon_satellite.setPos(x, y, z)
+        # Apply inclination (rotation around X axis)
+        y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
+        z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
+        self.moon_satellite.setPos(x, y_incl, z_incl)
         return Task.cont
 
 app = EarthOrbitApp()
