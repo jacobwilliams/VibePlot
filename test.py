@@ -201,7 +201,24 @@ class EarthOrbitApp(ShowBase):
         self.moon.setLightOff()
         self.moon.setLight(dlnp)
         self.moon.setShaderInput("sundir", sun_dir)
-        self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
+        # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
+        # 3D arrow axes for the Moon
+        arrow_ambient = AmbientLight("moon_arrow_ambient")
+        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
+        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
+        self.moon_axes_np = self.moon.attachNewNode("moon_axes")
+        self.moon_axes_np.setPos(0, 0, 0)
+        moon_x_arrow = self.create_arrow(shaft_length=2)
+        moon_x_arrow.setHpr(90, 0, 0)    # +X axis
+        moon_y_arrow = self.create_arrow(shaft_length=2)
+        moon_y_arrow.setHpr(180, 0, 0)   # +Y axis
+        moon_z_arrow = self.create_arrow(shaft_length=2)
+        moon_z_arrow.setHpr(0, 90, 0)    # +Z axis
+        for a in [moon_x_arrow, moon_y_arrow, moon_z_arrow]:
+            a.reparentTo(self.moon_axes_np)
+            a.setLightOff()
+            a.setLight(self.dlnp)
+            a.setLight(arrow_ambient_np)
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -454,7 +471,7 @@ class EarthOrbitApp(ShowBase):
         self.movie_fps = 60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
-        self.draw_axis_grid()
+        #self.draw_axis_grid()
 
     # def on_window_event(self, window):
     #     self.update_hud_position()
