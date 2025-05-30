@@ -7,6 +7,7 @@ import psutil, os
 import imageio
 import numpy as np
 import datetime
+import csv
 
 from direct.gui.OnscreenText import OnscreenText
 from direct.particles.ParticleEffect import ParticleEffect
@@ -30,8 +31,8 @@ from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Ge
                           GeomVertexRewriter, GeomLinestrips,
                           CardMaker, TransparencyAttrib,
                           WindowProperties, TransparencyAttrib,
-                          Shader, Mat3, BitMask32,
-                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue,
+                          Shader, Mat3, BitMask32, GeomPoints,
+                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, AntialiasAttrib, RenderModeAttrib, GeomVertexArrayFormat
                           )
 
 
@@ -39,9 +40,13 @@ loadPrcFileData('', 'framebuffer-multisample 1')
 loadPrcFileData('', 'multisamples 4')
 loadPrcFileData('', 'window-title VibePlot')
 # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
+loadPrcFileData('', 'gl-include-points-size true')
 
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
 MOON_RADIUS = 0.5  # Radius of Moon in Panda3D units
+# STARMAP_IMAGE = 'models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg'
+STARMAP_IMAGE = 'models/2k_stars.jpg'
+USE_STAR_IMAGE = False
 
 class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
@@ -102,22 +107,30 @@ class EarthOrbitApp(ShowBase):
         self.camera.lookAt(0, 0, 0)
         # self.camera.reparentTo(self.trackball)  #
 
-        # Star background (sky sphere)
-        self.stars = self.loader.loadModel("models/planet_sphere")
-        # self.stars.reparentTo(self.render)
-        self.stars.reparentTo(self.camera)
-        self.stars.setPos(0, 0, 0)
-        self.stars.setScale(1000, 1000, 1000)
-        self.stars.setTwoSided(True)  # Render inside of sphere
-        self.stars.setCompass()
-        self.stars.setBin('background', 0)
-        self.stars.setDepthWrite(False)
-        self.stars.setLightOff()
-        self.stars.setCompass()  # Keep stars stationary relative to camera
+        self.star_sphere_np = self.render.attachNewNode("star_sphere")
 
-        # star_tex = self.loader.loadTexture("models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg")
-        star_tex = self.loader.loadTexture("models/2k_stars.jpg")
-        self.stars.setTexture(star_tex, 1)
+        if USE_STAR_IMAGE:
+            # Star background (sky sphere)
+            self.stars = self.loader.loadModel("models/planet_sphere")
+            # self.stars.reparentTo(self.render)
+            self.stars.reparentTo(self.camera)
+            self.stars.setPos(0, 0, 0)
+            self.stars.setScale(1000, 1000, 1000)
+            self.stars.setTwoSided(True)  # Render inside of sphere
+            self.stars.setCompass()
+            self.stars.setBin('background', 0)
+            self.stars.setDepthWrite(False)
+            self.stars.setLightOff()
+            self.stars.setCompass()  # Keep stars stationary relative to camera
+            star_tex = self.loader.loadTexture(STARMAP_IMAGE)
+            self.stars.setTexture(star_tex, 1)
+        else:
+            self.win.setClearColor((0, 0, 0, 1))  # black background
+
+        self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
+        # self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
+
+        self.taskMgr.add(self.update_star_sphere, "UpdateStarSphere")
 
         # Lighting
         # ambient = AmbientLight("ambient")
@@ -326,7 +339,7 @@ class EarthOrbitApp(ShowBase):
             grid_np.setTransparency(TransparencyAttrib.MAlpha)
 
         # Add orbit task
-        self.orbit_radius = 4
+        self.orbit_radius = EARTH_RADIUS * 2.0
         self.orbit_speed = 1.0 #0.5  # radians per second
         self.taskMgr.add(self.orbit_task, "OrbitTask")
 
@@ -1461,10 +1474,167 @@ class EarthOrbitApp(ShowBase):
         self.moon_satellite.setPos(x, y_incl, z_incl)
         return Task.cont
 
+    def add_stars(self, filename="models/Stars_HYGv3.txt", num_stars=100):
+        """this one draws stars as spheres. this is not as efficient, but
+        seems to work."""
+        # Read the star data
+        stars = []
+        with open(filename, newline='') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter='\t')
+            for row in reader:
+                try:
+                    ra = float(row['ra'])
+                    dec = float(row['dec'])
+                    mag = float(row['mag'])
+                    ci = float(row['ci'])
+                    name = row.get('proper', '')
+                    stars.append({'ra': ra, 'dec': dec, 'mag': mag, 'ci': ci, 'name': name})
+                except Exception:
+                    continue  # skip malformed lines
+
+        # Sort by magnitude (lower is brighter)
+        stars = sorted(stars, key=lambda s: s['mag'])
+        stars = stars[:num_stars]
+
+        # Place each star on a celestial sphere of large radius
+        STAR_SPHERE_RADIUS = 100
+        for star in stars:
+            ra = star['ra'] * 15  # convert hours to degrees
+            dec = star['dec']
+            mag = star['mag']
+            ci = star['ci']
+            # Color mapping by color index (ci)
+            if ci <= 0.0:
+                color = (0.6, 0.8, 1.0, 1)  # blue-white
+            elif ci <= 0.3:
+                color = (0.7, 0.85, 1.0, 1)  # white-blue
+            elif ci <= 0.6:
+                color = (1.0, 1.0, 1.0, 1)   # white
+            elif ci <= 1.0:
+                color = (1.0, 1.0, 0.7, 1)   # yellow-white
+            elif ci <= 1.5:
+                color = (1.0, 0.8, 0.6, 1)   # orange
+            else:
+                color = (1.0, 0.6, 0.6, 1)   # red
+            # Convert to radians
+            ra_rad = math.radians(ra)
+            dec_rad = math.radians(dec)
+            # Spherical to Cartesian
+            x = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.cos(ra_rad)
+            y = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.sin(ra_rad)
+            z = STAR_SPHERE_RADIUS * math.sin(dec_rad)
+            # Scale star size by magnitude (smaller mag = bigger)
+            size = max(0.05, 0.25 - 0.04 * (mag + 1.5))
+            #color = (1, 0, 0, 1)  # white, or use color index if desired
+            star_np = self.create_sphere(radius=size, num_lat=6, num_lon=12, color=color)
+            star_np.setPos(x, y, z)
+            # star_np.reparentTo(self.render)
+            star_np.reparentTo(self.star_sphere_np)
+            star_np.setLightOff()
+            star_np.setTransparency(True)
+            if mag < 100.0 and star['name']:
+                text_node = TextNode('star_label')
+                text_node.setText(star['name'])
+                text_node.setTextColor(color)
+                text_node.setAlign(TextNode.ACenter)
+                text_np = star_np.attachNewNode(text_node)
+                text_np.setScale(0.9)  # Adjust size as needed
+                text_np.setPos(0, 0, size * 2.5)  # Offset above the star
+                text_np.setBillboardAxis()  # Make label always face the camera
+
+    def update_star_sphere(self, task):
+        """so the stars will rotate when you rotate the camera"""
+        self.star_sphere_np.setPos(self.camera.getPos())
+        return Task.cont
+
+    def add_stars_as_points(self, filename : str = "models/Stars_HYGv3.txt", num_stars : int = 100):
+        """this one draws stars as points, but they are squares on mac since
+        i can't get the shader thing to work right."""
+        # --- Custom vertex format with per-point size ---
+        array = GeomVertexArrayFormat()
+        array.addColumn("vertex", 3, Geom.NTFloat32, Geom.CPoint)
+        array.addColumn("color", 4, Geom.NTFloat32, Geom.CColor)
+        array.addColumn("size", 1, Geom.NTFloat32, Geom.COther)
+        format = GeomVertexFormat()
+        format.addArray(array)
+        format = GeomVertexFormat.registerFormat(format)
+        vdata = GeomVertexData('stars', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        color_writer = GeomVertexWriter(vdata, 'color')
+        size_writer = GeomVertexWriter(vdata, 'size')
+
+        # --- Read and sort stars ---
+        stars = []
+        with open(filename, newline='') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter='\t')
+            for row in reader:
+                try:
+                    ra = float(row['ra'])
+                    dec = float(row['dec'])
+                    mag = float(row['mag'])
+                    ci = float(row['ci'])
+                    stars.append({'ra': ra, 'dec': dec, 'mag': mag, 'ci': ci})
+                except Exception:
+                    continue
+        stars = sorted(stars, key=lambda s: s['mag'])[:num_stars]
+
+        # --- Write star data ---
+        STAR_SPHERE_RADIUS = 1000
+        for star in stars:
+            ra = star['ra'] * 15
+            dec = star['dec']
+            mag = star['mag']
+            ci = star['ci']
+            size = max(4.0, 16.0 - 2.5 * (mag + 1.5)) / 4.0
+            if ci <= 0.0:
+                color = (0.6, 0.8, 1.0, 1)
+            elif ci <= 0.3:
+                color = (0.7, 0.85, 1.0, 1)
+            elif ci <= 0.6:
+                color = (1.0, 1.0, 1.0, 1)
+            elif ci <= 1.0:
+                color = (1.0, 1.0, 0.7, 1)
+            elif ci <= 1.5:
+                color = (1.0, 0.8, 0.6, 1)
+            else:
+                color = (1.0, 0.6, 0.6, 1)
+            ra_rad = math.radians(ra)
+            dec_rad = math.radians(dec)
+            x = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.cos(ra_rad)
+            y = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.sin(ra_rad)
+            z = STAR_SPHERE_RADIUS * math.sin(dec_rad)
+            vertex.addData3(x, y, z)
+            color_writer.addData4f(*color)
+            size_writer.addData1f(size)
+
+        points = GeomPoints(Geom.UHStatic)
+        for i in range(len(stars)):
+            points.addVertex(i)
+        points.closePrimitive()
+
+        geom = Geom(vdata)
+        geom.addPrimitive(points)
+        node = GeomNode('star_points')
+        node.addGeom(geom)
+
+        stars_np = self.camera.attachNewNode(node)
+        stars_np.setBin('background', 0)
+        stars_np.setDepthWrite(False)
+        stars_np.setLightOff()
+        stars_np.setCompass()
+        stars_np.setTransparency(True)
+
+        # this doesn't work on the mac:
+        #stars_np.setShader(Shader.load(Shader.SL_GLSL, "models/star_point.vert", "models/star_point.frag"))
+
 app = EarthOrbitApp()
 
 # example reading trajectory from JSON file;
 # app.orbit_from_json_np = app.add_orbit_from_json("traj.json", color=(1, 0, 1, 1), thickness=2.0)
+
+# https://docs.panda3d.org/1.10/python/programming/render-attributes/antialiasing
+app.render.setAntialias(AntialiasAttrib.MAuto)  # antialiasing
+
 
 app.run()
 
