@@ -43,7 +43,7 @@ loadPrcFileData('', 'window-title VibePlot')
 loadPrcFileData('', 'gl-include-points-size true')
 
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
-MOON_RADIUS = 0.5  # Radius of Moon in Panda3D units
+MOON_RADIUS = EARTH_RADIUS / 4.0  # Radius of Moon in Panda3D units
 # STARMAP_IMAGE = 'models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg'
 STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
@@ -97,13 +97,13 @@ class EarthOrbitApp(ShowBase):
         )
         self.frame_count = 0
 
-        self.trackball.node().setPos(0, 20, 0)
+        self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
         self.trackball.node().setForwardScale(1.0)
         self.trackball.node().setRelTo(self.render)
 
         # Set initial camera position
-        self.camera.setPos(0, 20, 0)
+        self.camera.setPos(0, EARTH_RADIUS * 10, 0)
         self.camera.lookAt(0, 0, 0)
         # self.camera.reparentTo(self.trackball)  #
 
@@ -205,7 +205,7 @@ class EarthOrbitApp(ShowBase):
         self.moon.setPos(0, 0, 0)
         tex = self.loader.loadTexture("models/lroc_color_poles_1k.jpg")
         self.moon.setTexture(tex, 1)
-        self.moon_orbit_radius = 6.0  # Distance from Earth center (tweak as desired)
+        self.moon_orbit_radius = EARTH_RADIUS * 3  # Distance from Earth center (tweak as desired)
         self.moon_orbit_speed = 0.7  # radians per second (tweak for desired speed)
         self.taskMgr.add(self.moon_orbit_task, "MoonOrbitTask")
         self.moon_trace = []
@@ -404,11 +404,11 @@ class EarthOrbitApp(ShowBase):
         arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
         self.axes_np = self.render.attachNewNode("axes")
         self.axes_np.setPos(0, 0, 0)
-        self.x_arrow = self.create_arrow()
+        self.x_arrow = self.create_arrow(EARTH_RADIUS*2)
         self.x_arrow.setHpr(90, 0, 0)    # +X axis
-        self.y_arrow = self.create_arrow()
+        self.y_arrow = self.create_arrow(EARTH_RADIUS*2)
         self.y_arrow.setHpr(180, 0, 0)   # +Y axis
-        self.z_arrow = self.create_arrow()
+        self.z_arrow = self.create_arrow(EARTH_RADIUS*2)
         self.z_arrow.setHpr(0, 90, 0)    # +Z axis
         for a in [self.x_arrow, self.y_arrow, self.z_arrow]:
             a.reparentTo(self.axes_np)
@@ -425,7 +425,8 @@ class EarthOrbitApp(ShowBase):
         particle_radius = 0.03
         for idx in range(num_particles):
             # Random orbital parameters
-            r = random.uniform(2.2, 4.0)
+            #r = random.uniform(2.2, 4.0)
+            r = random.uniform(EARTH_RADIUS * 1.2, EARTH_RADIUS * 2.0)
             inclination = random.uniform(0, math.pi)
             angle0 = random.uniform(0, 2 * math.pi)
             speed = random.uniform(0.05, 0.2)
@@ -833,9 +834,9 @@ class EarthOrbitApp(ShowBase):
     def recenter_on_earth(self):
         # Reset camera and trackball to look at Earth's center
         self.trackball.node().setHpr(0, 0, 0)
-        self.trackball.node().setPos(0, 20, 0)
+        self.trackball.node().setPos(0, EARTH_RADIUS*10, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.camera.setPos(0, -20, 0)
+        self.camera.setPos(0, -(EARTH_RADIUS*10), 0)
         self.camera.lookAt(0, 0, 0)
 
     def line_intersects_sphere(self, p1, p2, sphere_center, sphere_radius):
