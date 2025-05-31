@@ -48,13 +48,90 @@ MOON_RADIUS = EARTH_RADIUS / 4.0  # Radius of Moon in Panda3D units
 STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
 
+constellations = {
+    "orion": [
+        "betelgeuse", "bellatrix", "mintaka", "alnilam", "alnitak", "saiph", "rigel"
+    ],
+    "big_dipper": [
+        "dubhe", "merak", "phecda", "megrez", "alioth", "mizar", "alkaid"
+    ],
+    "cassiopeia": [
+        "schedar", "caph", "gamma cassiopeiae", "rho cassiopeiae", "segin"
+    ],
+    "cygnus": [
+        "deneb", "sadr", "gienah", "delta cygni", "albireo"
+    ],
+    "lyra": [
+        "vega", "sheliak", "sulafat"
+    ],
+    "taurus": [
+        "aldebaran", "ain", "alnath"
+    ],
+    "scorpius": [
+        "antareS", "shaula", "sargas", "dschubba"
+    ],
+    "leo": [
+        "regulus", "denebola", "algieba", "zeta leonis", "adhafera"
+    ],
+    "gemini": [
+        "castor", "pollux", "alhena", "wasat"
+    ],
+    "canis_major": [
+        "sirius", "mirzam", "adhara", "wezen", "aludra"
+    ],
+    "canis_minor": [
+        "procyon", "gomeisa"
+    ],
+    "aquila": [
+        "altair", "tarazed", "alshain"
+    ],
+    "perseus": [
+        "mirfak", "algol", "atiks"
+    ],
+    "crux": [
+        "acrux", "mimosa", "gacrux", "delta crucis"
+    ],
+    "centaurus": [
+        "rigil kentaurus", "hadar", "menkent"
+    ],
+    "aries": [
+        "hamal", "sheratan", "mesarthim"
+    ],
+    "andromeda": [
+        "almach", "mirach", "alpheratz"
+    ],
+    "corona_borealis": [
+        "alphecca", "nusakan"
+    ],
+    "ursa_minor": [
+        "polaris", "kochab", "pherkad"
+    ],
+    "pegasus": [
+        "markab", "scheat", "algenib", "enif"
+    ],
+    "summer_triangle": [
+        "vega", "deneb", "altair"
+    ],
+    # Add more as desired!
+}
+
+def lonlat_to_xyz(lon, lat, radius):
+    lon_rad = math.radians(lon)
+    lat_rad = math.radians(lat)
+    x = radius * math.cos(lat_rad) * math.cos(lon_rad)
+    y = radius * math.cos(lat_rad) * math.sin(lon_rad)
+    z = radius * math.sin(lat_rad)
+    return x, y, z
+
 class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
 
-        self.process = psutil.Process(os.getpid())
-        self.process.cpu_percent()  # Initialize CPU usage
+        # Set horizontal and vertical FOV in degrees
+        self.camLens.setFov(60, 60)
+        # To make the view wider (fisheye effect), increase the FOV (e.g., 90).
+        # To zoom in (narrower view), decrease the FOV (e.g., 30).
 
         if parent_window is not None:
             props = WindowProperties()
@@ -62,6 +139,9 @@ class EarthOrbitApp(ShowBase):
             props.setOrigin(0, 0)
             props.setSize(800, 600)  # Or your desired size
             self.openDefaultWindow(props=props)
+
+        self.process = psutil.Process(os.getpid())
+        self.process.cpu_percent()  # Initialize CPU usage
 
         # self.accept("mouse1-double", self.recenter_on_earth)  # doesn't work?
         self.accept("space", self.recenter_on_earth)
@@ -127,8 +207,11 @@ class EarthOrbitApp(ShowBase):
         else:
             self.win.setClearColor((0, 0, 0, 1))  # black background
 
-        self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
+        # self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
+        self.add_stars("models/hygdata_v41.csv", num_stars=500)
         # self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
+        self.draw_constellations()
+        self.draw_sky_grid(sphere_radius=100)
 
         self.taskMgr.add(self.update_star_sphere, "UpdateStarSphere")
 
@@ -195,6 +278,9 @@ class EarthOrbitApp(ShowBase):
             site_marker.setTextureOff(1)  #
             site_marker.setTransparency(True)
         self.site_lines_np = None
+
+        self.draw_country_boundaries("models/custom.geo.json", radius=EARTH_RADIUS + 0.001, lon_rotate = 180.0)
+        # rotate because the texturemap is rotated...
 
         # Add the Moon
         # self.moon = self.loader.loadModel("models/planet_sphere")
@@ -268,7 +354,7 @@ class EarthOrbitApp(ShowBase):
         grid.setThickness(1.0)
         # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
         grid.setColor(1, 1, 1, 1)  # White, fully opaque
-        radius = EARTH_RADIUS + 0.001
+        radius = EARTH_RADIUS + 0.01
         num_lat = 9   # Number of latitude lines (excluding poles)
         num_lon = 18  # Number of longitude lines
         # Latitude lines (horizontal circles)
@@ -1480,15 +1566,21 @@ class EarthOrbitApp(ShowBase):
         seems to work."""
         # Read the star data
         stars = []
+        if os.path.splitext(filename)[1] == '.txt':
+            delimiter = '\t'
+        else:
+            delimiter = ','
         with open(filename, newline='') as csvfile:
-            reader = csv.DictReader(csvfile, delimiter='\t')
+            reader = csv.DictReader(csvfile, delimiter=delimiter)
             for row in reader:
                 try:
                     ra = float(row['ra'])
                     dec = float(row['dec'])
                     mag = float(row['mag'])
-                    ci = float(row['ci'])
+                    ci = float(row.get('ci', 0.0))  # Color index, default to 0.0 if missing
                     name = row.get('proper', '')
+                    if name.lower().strip() == 'sol':  # skip the Sun
+                        continue
                     stars.append({'ra': ra, 'dec': dec, 'mag': mag, 'ci': ci, 'name': name})
                 except Exception:
                     continue  # skip malformed lines
@@ -1499,6 +1591,7 @@ class EarthOrbitApp(ShowBase):
 
         # Place each star on a celestial sphere of large radius
         STAR_SPHERE_RADIUS = 100
+        self.star_positions = {}
         for star in stars:
             ra = star['ra'] * 15  # convert hours to degrees
             dec = star['dec']
@@ -1524,6 +1617,7 @@ class EarthOrbitApp(ShowBase):
             x = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.cos(ra_rad)
             y = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.sin(ra_rad)
             z = STAR_SPHERE_RADIUS * math.sin(dec_rad)
+            self.star_positions[star['name'].strip().lower()] = (x, y, z)
             # Scale star size by magnitude (smaller mag = bigger)
             size = max(0.05, 0.25 - 0.04 * (mag + 1.5))
             #color = (1, 0, 0, 1)  # white, or use color index if desired
@@ -1542,6 +1636,21 @@ class EarthOrbitApp(ShowBase):
                 text_np.setScale(0.9)  # Adjust size as needed
                 text_np.setPos(0, 0, size * 2.5)  # Offset above the star
                 text_np.setBillboardAxis()  # Make label always face the camera
+
+    def draw_constellations(self):
+        for name, star_list in constellations.items():
+            segs = LineSegs()
+            segs.setThickness(1.0)
+            segs.setColor(1, 1, 0.5, 0.3)  # Light yellow
+            for i in range(len(star_list) - 1):
+                s1 = star_list[i].strip().lower()
+                s2 = star_list[i + 1].strip().lower()
+                if s1 in self.star_positions and s2 in self.star_positions:
+                    segs.moveTo(*self.star_positions[s1])
+                    segs.drawTo(*self.star_positions[s2])
+            constellation_np = self.star_sphere_np.attachNewNode(segs.create())
+            constellation_np.setLightOff()
+            constellation_np.setTransparency(True)
 
     def update_star_sphere(self, task):
         """so the stars will rotate when you rotate the camera"""
@@ -1627,6 +1736,80 @@ class EarthOrbitApp(ShowBase):
 
         # this doesn't work on the mac:
         #stars_np.setShader(Shader.load(Shader.SL_GLSL, "models/star_point.vert", "models/star_point.frag"))
+
+    def draw_sky_grid(self, sphere_radius=100, ra_lines=24, dec_lines=12):
+        """Draws a right ascension/declination grid on the celestial sphere."""
+        grid = LineSegs()
+        grid.setThickness(1.0)
+        grid.setColor(0.4, 0.7, 1, 0.3)  # Light blue, semi-transparent
+
+        # Declination lines (horizontal circles)
+        for i in range(1, dec_lines):
+            dec = -90 + 180 * i / dec_lines  # from -90 to +90
+            dec_rad = math.radians(dec)
+            z = sphere_radius * math.sin(dec_rad)
+            r_xy = sphere_radius * math.cos(dec_rad)
+            segments = 120
+            for j in range(segments + 1):
+                ra = 360 * j / segments
+                ra_rad = math.radians(ra)
+                x = r_xy * math.cos(ra_rad)
+                y = r_xy * math.sin(ra_rad)
+                if j == 0:
+                    grid.moveTo(x, y, z)
+                else:
+                    grid.drawTo(x, y, z)
+
+        # Right Ascension lines (vertical half-circles)
+        for i in range(ra_lines):
+            ra = 360 * i / ra_lines
+            ra_rad = math.radians(ra)
+            segments = 120
+            for j in range(segments + 1):
+                dec = -90 + 180 * j / segments
+                dec_rad = math.radians(dec)
+                x = sphere_radius * math.cos(dec_rad) * math.cos(ra_rad)
+                y = sphere_radius * math.cos(dec_rad) * math.sin(ra_rad)
+                z = sphere_radius * math.sin(dec_rad)
+                if j == 0:
+                    grid.moveTo(x, y, z)
+                else:
+                    grid.drawTo(x, y, z)
+
+        sky_grid_np = self.star_sphere_np.attachNewNode(grid.create())
+        sky_grid_np.setLightOff()
+        sky_grid_np.setTransparency(True)
+        sky_grid_np.setTwoSided(True)
+
+    def draw_country_boundaries(self, geojson_path, radius=EARTH_RADIUS + 0.001, lon_rotate = 0.0):
+        with open(geojson_path) as f:
+            data = json.load(f)
+
+        segs = LineSegs()
+        segs.setThickness(1.2)
+        segs.setColor(0, 1, 0, 1)  # Green lines
+
+        for feature in data['features']:
+            for coords in feature['geometry']['coordinates']:
+                # Handle MultiPolygon and Polygon
+                if feature['geometry']['type'] == 'Polygon':
+                    rings = [coords]
+                else:
+                    rings = coords
+                for ring in rings:
+                    first = True
+                    for lon, lat in ring:
+                        lon = lon + lon_rotate
+                        x, y, z = lonlat_to_xyz(lon, lat, radius)
+                        if first:
+                            segs.moveTo(x, y, z)
+                            first = False
+                        else:
+                            segs.drawTo(x, y, z)
+        np = self.earth.attachNewNode(segs.create())
+        np.setLightOff()
+        np.setTwoSided(True)
+        np.setTransparency(True)
 
 app = EarthOrbitApp()
 
