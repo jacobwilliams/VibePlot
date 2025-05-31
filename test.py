@@ -246,12 +246,21 @@ class Body:
                  day_tex : str = None, night_tex : str = None, sun_dir = LVector3(0, 0, 1),
                  trace_length: int = 200,
                  geojson_path : str = None, lon_rotate : str = 0.0,
-                 draw_grid: bool = False, draw_3d_axes: bool = True):
+                 draw_grid: bool = False, draw_3d_axes: bool = True,
+                 orbit_markers: bool = False, marker_interval: int = 10,
+                 marker_size: float = 0.08, marker_color=(0, 1, 1, 1)):
 
         self.name = name
         self.radius = radius
         self.color = color
         self.parent = parent
+
+        # Store orbit marker parameters
+        self.orbit_markers = orbit_markers
+        self.marker_interval = marker_interval
+        self.marker_size = marker_size
+        self.marker_color = marker_color
+        self.marker_nodes = []
 
         self._body = create_sphere(radius, num_lat=24, num_lon=48, color=color)
         self._body.reparentTo(parent.render)
@@ -397,41 +406,83 @@ class Body:
         self.boundaries_np.setTransparency(True)
 
     def orbit_task(self, task):
-
-        #...fixed axis:
-        # angle = task.time * self.moon_orbit_speed
-        # x = self.moon_orbit_radius * math.cos(angle)
-        # y = self.moon_orbit_radius * math.sin(angle)
-        # z = 0
-        # self.moon.setPos(x, y, z)
-        # self.moon.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
-
         et = task.time
 
         self.set_orientation(et)
         r = self.get_position_vector(et)
-        self._body.setPos(r[0], r[1], r[2])
 
-        # Update moon trace
-        moon_pos = self._body.getPos(self.parent.render)
-        self._trace.append(moon_pos)
+        # Get the new position
+        new_pos = Point3(r[0], r[1], r[2])
+        self._body.setPos(new_pos)
 
-        if self.trace_length:
-            if len(self._trace) > self.trace_length:
-                self._trace.pop(0)
-        # Draw the trace
+        # Update body trace
+        body_pos = self._body.getPos(self.parent.render)
+        self._trace.append(body_pos)
+
+        # Trim trace if needed
+        if self.trace_length and len(self._trace) > self.trace_length:
+            self._trace.pop(0)
+
+        # Draw the trace and markers
         self._trace_node.node().removeAllChildren()
-        segs = LineSegs()
-        segs.setThickness(3.0)
-        for i, pt in enumerate(self._trace):
-            alpha = i / len(self._trace)
-            segs.setColor(0.7, 0.7, 1, alpha)
-            if i == 0:
-                segs.moveTo(pt)
-            else:
-                segs.drawTo(pt)
-        self._trace_node.attachNewNode(segs.create())
-        self._trace_node.setTransparency(True)
+
+        # Clear existing markers
+        if hasattr(self, 'marker_nodes'):
+            for marker in self.marker_nodes:
+                marker.removeNode()
+            self.marker_nodes = []
+
+        # Create marker parent if needed
+        if not hasattr(self, 'orbit_markers_np') or self.orbit_markers_np is None:
+            self.orbit_markers_np = self.parent.render.attachNewNode(f"{self.name}_orbit_markers")
+        else:
+            self.orbit_markers_np.node().removeAllChildren()
+
+        # Draw trace and add markers
+        if len(self._trace) > 1:
+            segs = LineSegs()
+            segs.setThickness(3.0)
+
+            # Decide how many markers to create
+            marker_interval = max(1, len(self._trace) // (self.trace_length // self.marker_interval))
+
+            for i, pt in enumerate(self._trace):
+                # Alpha increases from oldest to newest point
+                alpha = i / (len(self._trace) - 1)
+
+                # Set color for trace segment
+                segs.setColor(0.7, 0.7, 1, alpha)
+
+                # Start or continue line
+                if i == 0:
+                    segs.moveTo(pt)
+                else:
+                    segs.drawTo(pt)
+
+                # Add marker at regular intervals
+                if self.orbit_markers and i % marker_interval == 0:
+                    marker_color = (
+                        self.marker_color[0],
+                        self.marker_color[1],
+                        self.marker_color[2],
+                        self.marker_color[3] * alpha
+                    )
+
+                    marker = create_sphere(
+                        radius=self.marker_size,
+                        num_lat=8,
+                        num_lon=16,
+                        color=marker_color
+                    )
+                    marker.reparentTo(self.orbit_markers_np)
+                    marker.setPos(pt)
+                    marker.setLightOff()
+                    marker.setTransparency(True)
+                    self.marker_nodes.append(marker)
+
+            # Create the trace line
+            self._trace_node.attachNewNode(segs.create())
+            self._trace_node.setTransparency(True)
 
         return Task.cont
 
@@ -485,7 +536,6 @@ class Body:
         self.grid_np.setShaderOff()
         self.grid_np.setLightOff()
         self.grid_np.setTwoSided(True)
-
 
 class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
@@ -715,7 +765,17 @@ class EarthOrbitApp(ShowBase):
         self.mars_axis_np = self.create_body_fixed_axes(self.mars, MARS_RADIUS)  # Create axes for the Moon
 
         #add another body using the Body class:
-        self.venus = Body(self, name="Venus", texture='models/2k_venus_surface.jpg', radius=VENUS_RADIUS, color=(1, 0.8, 0.6, 1))
+        # self.venus = Body(self, name="Venus", texture='models/2k_venus_surface.jpg', radius=VENUS_RADIUS, color=(1, 0.8, 0.6, 1))
+        self.venus = Body(self,
+                 name="Venus",
+                 texture='models/2k_venus_surface.jpg',
+                 radius=VENUS_RADIUS,
+                 trace_length=50,
+                 color=(1, 0.8, 0.6, 1),
+                 orbit_markers=True,
+                 marker_size=0.06,
+                 marker_interval=5,
+                 marker_color=(1, 1, 1, 0.5))
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -869,8 +929,8 @@ class EarthOrbitApp(ShowBase):
             self.orbit_segs.drawTo(x, y_incl, z_incl)
         self.orbit_np = NodePath(self.orbit_segs.create())
         self.orbit_np.reparentTo(self.render)
-        self.taskMgr.add(self.orbit_task, "OrbitTask")
 
+        self.taskMgr.add(self.orbit_task, "OrbitTask")
         self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
 
         # to pulsate the orbit line:
@@ -951,7 +1011,7 @@ class EarthOrbitApp(ShowBase):
         self.movie_fps = 60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
-        #self.draw_axis_grid()
+        self.draw_axis_grid()
 
     # # def on_window_event(self, window):
     # #     self.update_hud_position()
@@ -994,7 +1054,7 @@ class EarthOrbitApp(ShowBase):
             else:
                 label.hide()
 
-    def draw_axis_grid(self):
+    def draw_axis_grid(self, show_grid : bool = False):
 
         axes = LineSegs()
         axes.setThickness(3.0)
@@ -1017,42 +1077,83 @@ class EarthOrbitApp(ShowBase):
         axes_np.setLightOff()
         axes_np.setTwoSided(True)
 
-        grid = LineSegs()
-        grid.setThickness(1.0)
-        grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        # Create axis labels
+        label_scale = 0.5
+        label_offset = 0.3  # Distance beyond the end of the axis
 
-        grid_size = 8.0  # Half-width of the grid cube
-        num_lines = 4    # Number of lines per axis
-        step = (2 * grid_size) / (num_lines - 1)
+        # X axis label
+        x_label = TextNode('x_label')
+        x_label.setText("X")
+        x_label.setTextColor(1, 0, 0, 1)  # Red
+        x_label.setAlign(TextNode.ACenter)
+        x_label_np = self.render.attachNewNode(x_label)
+        x_label_np.setPos(length + label_offset, 0, 0)
+        x_label_np.setScale(label_scale)
+        x_label_np.setBillboardPointEye()  # Always face camera
+        x_label_np.setLightOff()
 
-        # Draw grid lines along X
-        for i in range(num_lines):
-            y = -grid_size + i * step
-            for j in range(num_lines):
-                z = -grid_size + j * step
-                grid.moveTo(-grid_size, y, z)
-                grid.drawTo(grid_size, y, z)
+        # Y axis label
+        y_label = TextNode('y_label')
+        y_label.setText("Y")
+        y_label.setTextColor(0, 1, 0, 1)  # Green
+        y_label.setAlign(TextNode.ACenter)
+        y_label_np = self.render.attachNewNode(y_label)
+        y_label_np.setPos(0, length + label_offset, 0)
+        y_label_np.setScale(label_scale)
+        y_label_np.setBillboardPointEye()
+        y_label_np.setLightOff()
 
-        # Draw grid lines along Y
-        for i in range(num_lines):
-            x = -grid_size + i * step
-            for j in range(num_lines):
-                z = -grid_size + j * step
-                grid.moveTo(x, -grid_size, z)
-                grid.drawTo(x, grid_size, z)
+        # Z axis label
+        z_label = TextNode('z_label')
+        z_label.setText("Z")
+        z_label.setTextColor(0, 0, 1, 1)  # Blue
+        z_label.setAlign(TextNode.ACenter)
+        z_label_np = self.render.attachNewNode(z_label)
+        z_label_np.setPos(0, 0, length + label_offset)
+        z_label_np.setScale(label_scale)
+        z_label_np.setBillboardPointEye()
+        z_label_np.setLightOff()
 
-        # Draw grid lines along Z
-        for i in range(num_lines):
-            x = -grid_size + i * step
-            for j in range(num_lines):
-                y = -grid_size + j * step
-                grid.moveTo(x, y, -grid_size)
-                grid.drawTo(x, y, grid_size)
+        # Store references to the labels (optional)
+        self.axis_labels = [x_label_np, y_label_np, z_label_np]
 
-        grid_np = self.render.attachNewNode(grid.create())
-        grid_np.setLightOff()
-        grid_np.setTwoSided(True)
-        grid_np.setTransparency(True)
+        if show_grid:
+            grid = LineSegs()
+            grid.setThickness(1.0)
+            grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+
+            grid_size = 8.0  # Half-width of the grid cube
+            num_lines = 4    # Number of lines per axis
+            step = (2 * grid_size) / (num_lines - 1)
+
+            # Draw grid lines along X
+            for i in range(num_lines):
+                y = -grid_size + i * step
+                for j in range(num_lines):
+                    z = -grid_size + j * step
+                    grid.moveTo(-grid_size, y, z)
+                    grid.drawTo(grid_size, y, z)
+
+            # Draw grid lines along Y
+            for i in range(num_lines):
+                x = -grid_size + i * step
+                for j in range(num_lines):
+                    z = -grid_size + j * step
+                    grid.moveTo(x, -grid_size, z)
+                    grid.drawTo(x, grid_size, z)
+
+            # Draw grid lines along Z
+            for i in range(num_lines):
+                x = -grid_size + i * step
+                for j in range(num_lines):
+                    y = -grid_size + j * step
+                    grid.moveTo(x, y, -grid_size)
+                    grid.drawTo(x, y, grid_size)
+
+            grid_np = self.render.attachNewNode(grid.create())
+            grid_np.setLightOff()
+            grid_np.setTwoSided(True)
+            grid_np.setTransparency(True)
 
     def create_axes(self, body, length: int = 1.0, thickness: int = 3):
         """coordinate axes"""
