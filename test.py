@@ -26,7 +26,7 @@ from direct.task import Task
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Vec4, Mat4,
-                          Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
+                          Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
                           loadPrcFileData, LineSegs, TextNode,
                           GeomVertexRewriter, GeomLinestrips,
                           CardMaker, TransparencyAttrib,
@@ -261,6 +261,7 @@ class Body:
         self.marker_size = marker_size
         self.marker_color = marker_color
         self.marker_nodes = []
+        self.marker_labels = []  #  initialize marker labels list
 
         self._body = create_sphere(radius, num_lat=24, num_lon=48, color=color)
         self._body.reparentTo(parent.render)
@@ -294,7 +295,7 @@ class Body:
         if draw_grid:
             self.draw_lat_lon_grid()
 
-        self.parent.taskMgr.add(self.orbit_task, f"{self._body}OrbitTask")
+        self.parent.add_task(self.orbit_task, f"{self._body}OrbitTask")
 
         self.trace_length = trace_length  # Number of points to keep in the moon's trace
         if self.trace_length:
@@ -432,6 +433,12 @@ class Body:
                 marker.removeNode()
             self.marker_nodes = []
 
+        # Clear existing marker labels
+        if hasattr(self, 'marker_labels'):
+            for label in self.marker_labels:
+                label.removeNode()
+        self.marker_labels = []
+
         # Create marker parent if needed
         if not hasattr(self, 'orbit_markers_np') or self.orbit_markers_np is None:
             self.orbit_markers_np = self.parent.render.attachNewNode(f"{self.name}_orbit_markers")
@@ -445,6 +452,8 @@ class Body:
 
             # Decide how many markers to create
             marker_interval = max(1, len(self._trace) // (self.trace_length // self.marker_interval))
+
+            marker_count = 0  # For numbering markers
 
             for i, pt in enumerate(self._trace):
                 # Alpha increases from oldest to newest point
@@ -461,6 +470,8 @@ class Body:
 
                 # Add marker at regular intervals
                 if self.orbit_markers and i % marker_interval == 0:
+                    marker_count += 1
+
                     marker_color = (
                         self.marker_color[0],
                         self.marker_color[1],
@@ -479,6 +490,36 @@ class Body:
                     marker.setLightOff()
                     marker.setTransparency(True)
                     self.marker_nodes.append(marker)
+
+                    # Create numbered label for this marker
+                    label_text = TextNode(f'marker_label_{marker_count}')
+                    label_text.setText(f"{marker_count}")
+                    label_text.setTextColor(
+                        self.marker_color[0],
+                        self.marker_color[1],
+                        self.marker_color[2],
+                        self.marker_color[3] * alpha  # Same opacity as marker
+                    )
+                    label_text.setAlign(TextNode.ACenter)
+                    label_np = self.orbit_markers_np.attachNewNode(label_text)
+
+                    # Position the label next to the marker
+                    label_offset = self.marker_size * 2.5
+                    label_np.setPos(pt[0], pt[1], pt[2] + label_offset)
+
+                    # Scale the label appropriately
+                    label_np.setScale(0.2)
+
+                    # Make the label always face the camera
+                    label_np.setBillboardPointEye()
+
+                    # Apply same properties as marker
+                    label_np.setLightOff()
+                    label_np.setTransparency(True)
+
+                    # Store for cleanup
+                    self.marker_labels.append(label_np)
+
 
             # Create the trace line
             self._trace_node.attachNewNode(segs.create())
@@ -542,6 +583,8 @@ class EarthOrbitApp(ShowBase):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
 
+        self.task_list = []  # list of (task, name) tuples
+
         # Set horizontal and vertical FOV in degrees
         self.camLens.setFov(60, 60)
         # To make the view wider (fisheye effect), increase the FOV (e.g., 90).
@@ -571,25 +614,45 @@ class EarthOrbitApp(ShowBase):
         # self.accept("window-event", self.on_window_event)  # for moving HUD
 
         self.scene_anim_running = True
-        self.scene_anim_task_names = [
-            "OrbitTask",
-            "MoonOrbitTask",
-            "MarsOrbitTask",
-            "RotateEarthTask",
-            "ParticlesOrbitTask",
-            # "OrbitAnimTask",
-            # "HyperbolicOrbitTask",
-            # Add any other task names you want to pause/resume
-]
+
         # self.taskMgr.doMethodLater(2.0, self.debug_tasks, "DebugTasks")  # debugging
 
         # inertia:
-        # self.last_mouse_pos = None
-        # self.angular_velocity = 0.0
-        # self.inertia_axis = LVector3(0, 0, 1)
-        # self.accept("mouse1", self.on_mouse_down)
-        # self.accept("mouse1-up", self.on_mouse_up)
-        # self.inertia_task = None
+        self.last_mouse_pos = None
+        self.mouse_prev_pos = None
+        self.angular_velocity = Vec3(0, 0, 0)
+        self.inertia_active = False
+        self.friction = 0.98  # Dampening factor (adjust as needed)
+
+        # Add mouse handlers
+        # self.ignore("option-mouse1")
+        # self.ignore("option-mouse1-up")
+        # self.ignore("alt-mouse1")
+        # self.ignore("alt-mouse1-up")
+        # self.ignore("shift-mouse1")
+        # self.ignore("shift-mouse1-up")
+
+        # messenger.toggleVerbose()  # Enable verbose messenger output
+        # self.accept("*", self.event_logger)  # debugging, log all events
+
+
+        #self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
+        #self.accept("alt-mouse1-up", self.on_alt_mouse_up)
+        # Add mouse handlers - use option key name for Mac compatibility
+        self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
+        # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
+        self.accept("time-mouse1-up", self.on_alt_mouse_up) # Mac-specific
+        # self.accept("alt-up", self.on_alt_mouse_up) # Mac-specific
+
+        self.accept("alt-mouse1", self.on_alt_mouse_down)     # Windows/Linux
+        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)    # Windows/Linux
+        # self.accept("shift-mouse1", self.on_alt_mouse_down)
+        # self.accept("shift-mouse1-up", self.on_alt_mouse_up)
+        # Task for tracking mouse during drag
+        self.mouse_task = None
+
+        # Task for inertial movement
+        self.inertia_task = None
 
         self.hud_text = OnscreenText(
             text="Frame: 0",
@@ -637,7 +700,7 @@ class EarthOrbitApp(ShowBase):
         self.draw_constellations()
         self.draw_sky_grid(sphere_radius=100)
 
-        self.taskMgr.add(self.update_star_sphere, "UpdateStarSphere")
+        self.add_task(self.update_star_sphere, "UpdateStarSphere")
 
         # Lighting
         # ambient = AmbientLight("ambient")
@@ -720,7 +783,7 @@ class EarthOrbitApp(ShowBase):
         #                     num_rings=7,         # More rings for detail
         #                     transparency=0.7     # Slightly transparent
         #                 )
-        # self.taskMgr.add(self.rotate_rings_task, "RotateRingsTask")
+        # self.add_task(self.rotate_rings_task, "RotateRingsTask")
 
         # Add the Moon
         # self.moon = self.loader.loadModel("models/planet_sphere")
@@ -733,7 +796,7 @@ class EarthOrbitApp(ShowBase):
         self.moon.setTexture(tex, 1)
         self.moon_orbit_radius = EARTH_RADIUS * 3  # Distance from Earth center (tweak as desired)
         self.moon_orbit_speed = 0.7  # radians per second (tweak for desired speed)
-        self.taskMgr.add(self.moon_orbit_task, "MoonOrbitTask")
+        self.add_task(self.moon_orbit_task, "MoonOrbitTask")
         self.moon_trace = []
         self.moon_trace_length = 200  # Number of points to keep in the moon's trace
         self.moon_trace_node = self.render.attachNewNode("moon_trace")
@@ -755,7 +818,7 @@ class EarthOrbitApp(ShowBase):
         self.mars.setTexture(tex, 1)
         self.mars_orbit_radius = EARTH_RADIUS * 4  # Distance from Earth center (tweak as desired)
         self.mars_orbit_speed = 0.5  # radians per second (tweak for desired speed)
-        self.taskMgr.add(self.mars_orbit_task, "MarsOrbitTask")
+        self.add_task(self.mars_orbit_task, "MarsOrbitTask")
         self.mars_trace = []
         self.mars_trace_length = 200  # Number of points to keep in the mars's trace
         self.mars_trace_node = self.render.attachNewNode("mars_trace")
@@ -782,7 +845,7 @@ class EarthOrbitApp(ShowBase):
         self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
         self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
         self.moon_satellite.reparentTo(self.moon)  # Parent to the Moon so it follows Moon's orbit
-        self.taskMgr.add(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
+        self.add_task(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
         # --- Visualize the satellite's orbit path around the Moon ---
         moon_orbit_segs = LineSegs()
         moon_orbit_segs.setThickness(2)
@@ -885,7 +948,7 @@ class EarthOrbitApp(ShowBase):
         # Add orbit task
         self.orbit_radius = EARTH_RADIUS * 2.0
         self.orbit_speed = 1.0 #0.5  # radians per second
-        self.taskMgr.add(self.orbit_task, "OrbitTask")
+        #self.add_task(self.orbit_task, "OrbitTask")
 
 
         # Add a small sphere as the satellite
@@ -930,11 +993,11 @@ class EarthOrbitApp(ShowBase):
         self.orbit_np = NodePath(self.orbit_segs.create())
         self.orbit_np.reparentTo(self.render)
 
-        self.taskMgr.add(self.orbit_task, "OrbitTask")
-        self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
+        self.add_task(self.orbit_task, "OrbitTask")
+        self.add_task(self.rotate_earth_task, "RotateEarthTask")
 
         # to pulsate the orbit line:
-        # self.taskMgr.add(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
+        # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
 
         # self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
         # self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
@@ -999,7 +1062,7 @@ class EarthOrbitApp(ShowBase):
         self.particle_traces = [[particle.getPos()] * self.trace_length for particle in self.particles]
         self.trace_nodes = [self.render.attachNewNode("trace") for _ in self.particles]
 
-        self.taskMgr.add(self.particles_orbit_task, "ParticlesOrbitTask")
+        self.add_task(self.particles_orbit_task, "ParticlesOrbitTask")
 
         self.manifold_np = None
 
@@ -1015,6 +1078,113 @@ class EarthOrbitApp(ShowBase):
 
     # # def on_window_event(self, window):
     # #     self.update_hud_position()
+
+    def event_logger(self, *args, **kwargs):
+        # if len(args) > 0 and (
+        #     "mouse" in args[0] or
+        #     "shift" in args[0] or
+        #     "alt" in args[0] or
+        #     "option" in args[0]
+        # ):
+        #     print(f"EVENT: {args[0]}")
+        print(f"EVENT: {args}, {kwargs}")  # Log all events for debugging
+
+    def on_alt_mouse_up(self, *args):
+        """Stop tracking mouse and apply inertia if moving fast enough"""
+        print("Alt+Mouse up detected")  # Debug print
+        print(f"Angular velocity: {self.angular_velocity}")
+        if self.mouse_task:
+            self.taskMgr.remove(self.mouse_task)
+            self.mouse_task = None
+
+        # Check if we have enough velocity for inertia
+        speed = self.angular_velocity.length()
+        if speed > 0.01:
+            self.inertia_active = True
+            self.inertia_task = self.taskMgr.add(self.apply_inertia_task, "InertiaTask")
+
+    def on_alt_mouse_down(self):
+        """Start tracking mouse for inertial rotation"""
+        if self.mouseWatcherNode.hasMouse():
+            # Store current mouse position
+            self.last_mouse_pos = self.mouseWatcherNode.getMouse()
+            self.mouse_prev_pos = self.last_mouse_pos
+
+            # Store current camera orientation as matrix
+            self.start_mat = self.trackball.node().getMat()
+
+            # Start tracking mouse movement
+            if self.mouse_task:
+                self.taskMgr.remove(self.mouse_task)
+            self.mouse_task = self.taskMgr.add(self.track_mouse_task, "TrackMouseTask")
+
+            # Stop any existing inertia
+            if self.inertia_task:
+                self.taskMgr.remove(self.inertia_task)
+                self.inertia_task = None
+
+            # Angular velocity is now a 3D vector in camera's local coordinates
+            self.angular_velocity = Vec3(0, 0, 0)
+            self.inertia_active = False
+            print("Alt+Mouse down detected")
+
+    def track_mouse_task(self, task):
+        """Track mouse movement and calculate angular velocity"""
+        if self.mouseWatcherNode.hasMouse():
+            # Get current mouse position
+            current_pos = self.mouseWatcherNode.getMouse()
+
+            if self.last_mouse_pos:
+                # Calculate mouse movement delta
+                delta_x = current_pos.getX() - self.last_mouse_pos.getX()
+                delta_y = current_pos.getY() - self.last_mouse_pos.getY()
+
+                # Apply rotation directly (trackball behavior)
+                self.trackball.node().setH(self.trackball.node().getH() - delta_x * 50)
+                self.trackball.node().setP(self.trackball.node().getP() - delta_y * 50)
+
+                # Calculate angular velocity - IMPORTANT: match the sign used above
+                dt = globalClock.getDt()
+                if dt > 0.001:
+                    # NOTE: We use -delta_x and -delta_y to match the rotation direction
+                    vx = -delta_x / dt
+                    vy = -delta_y / dt
+
+                    # Apply velocity scaling - keep the signs consistent
+                    velocity_scale = 50.0
+                    self.angular_velocity = Vec3(vy * velocity_scale, vx * velocity_scale, 0)
+
+                    # Limit maximum velocity if needed
+                    max_speed = 100.0
+                    if self.angular_velocity.length() > max_speed:
+                        self.angular_velocity.normalize()
+                        self.angular_velocity *= max_speed
+
+            # Store current position for next frame
+            self.last_mouse_pos = Point2(current_pos.getX(), current_pos.getY())
+
+        return Task.cont
+
+    def apply_inertia_task(self, task):
+        """Continue camera rotation with inertia after mouse release"""
+        if not self.inertia_active:
+            return Task.done
+
+        # Apply rotation based on current angular velocity - FIX SIGN DIRECTION
+        dt = globalClock.getDt()
+        self.trackball.node().setP(self.trackball.node().getP() + self.angular_velocity.getX() * dt)
+        self.trackball.node().setH(self.trackball.node().getH() - self.angular_velocity.getY() * dt)
+
+        # Apply friction to slow down movement
+        self.friction = 0.95
+        self.angular_velocity *= self.friction
+
+        # Stop when velocity gets too small
+        if self.angular_velocity.length() < 1.0:
+            self.inertia_active = False
+            return Task.done
+
+        return Task.cont
 
     def debug_tasks(self, task):
         print(f"Active tasks: {[t.getName() for t in self.taskMgr.getTasks()]}")
@@ -1054,24 +1224,68 @@ class EarthOrbitApp(ShowBase):
             else:
                 label.hide()
 
-    def draw_axis_grid(self, show_grid : bool = False):
+    def draw_axis_grid(self, thickness=3.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
+        """
+        Draw coordinate axes with hash marks at specified intervals.
+
+        Args:
+            thickness: Line thickness for the main axes
+            show_grid: Whether to show the background grid
+            tick_interval: Distance between hash marks on axes
+            tick_size: Size of the hash marks
+        """
 
         axes = LineSegs()
-        axes.setThickness(3.0)
+        axes.setThickness(thickness)
         length = 8.0  # Adjust as needed
 
         # X axis (red)
         axes.setColor(1, 0, 0, 1)
         axes.moveTo(0, 0, 0)
         axes.drawTo(length, 0, 0)
+
+        if tick_interval:
+            # Hash marks for X axis (in YZ plane)
+            for i in range(1, int(length/tick_interval) + 1):
+                pos = i * tick_interval
+                # Vertical tick (in Z direction)
+                axes.moveTo(pos, 0, -tick_size/2)
+                axes.drawTo(pos, 0, tick_size/2)
+                # Horizontal tick (in Y direction)
+                axes.moveTo(pos, -tick_size/2, 0)
+                axes.drawTo(pos, tick_size/2, 0)
+
         # Y axis (green)
         axes.setColor(0, 1, 0, 1)
         axes.moveTo(0, 0, 0)
         axes.drawTo(0, length, 0)
+
+        if tick_interval:
+            # Hash marks for Y axis (in XZ plane)
+            for i in range(1, int(length/tick_interval) + 1):
+                pos = i * tick_interval
+                # Vertical tick (in Z direction)
+                axes.moveTo(0, pos, -tick_size/2)
+                axes.drawTo(0, pos, tick_size/2)
+                # Horizontal tick (in X direction)
+                axes.moveTo(-tick_size/2, pos, 0)
+                axes.drawTo(tick_size/2, pos, 0)
+
         # Z axis (blue)
         axes.setColor(0, 0, 1, 1)
         axes.moveTo(0, 0, 0)
         axes.drawTo(0, 0, length)
+
+        if tick_interval:
+            # Hash marks for Z axis (in XY plane)
+            for i in range(1, int(length/tick_interval) + 1):
+                pos = i * tick_interval
+                # Tick in X direction
+                axes.moveTo(-tick_size/2, 0, pos)
+                axes.drawTo(tick_size/2, 0, pos)
+                # Tick in Y direction
+                axes.moveTo(0, -tick_size/2, pos)
+                axes.drawTo(0, tick_size/2, pos)
 
         axes_np = self.render.attachNewNode(axes.create())
         axes_np.setLightOff()
@@ -1194,87 +1408,6 @@ class EarthOrbitApp(ShowBase):
     #     if hasattr(self, "fps_text"):
     #         self.fps_text.setPos(-1.3 * (1 / aspect), 0.90)
 
-    ####################
-    #---- try to have inertia spin on mouse drag.... not quite what i want but a start ....
-    # def on_mouse_down(self):
-    #     self.last_mouse_pos = self.win.getPointer(0).getX(), self.win.getPointer(0).getY()
-    #     self.angular_velocity = 0.0
-    #     if self.inertia_task:
-    #         self.taskMgr.remove(self.inertia_task)
-    #         self.inertia_task = None
-
-    # def on_mouse_up(self):
-    #     # Calculate velocity based on last drag
-    #     if self.last_mouse_pos is not None:
-    #         x, y = self.win.getPointer(0).getX(), self.win.getPointer(0).getY()
-    #         dx = x - self.last_mouse_pos[0]
-    #         dy = y - self.last_mouse_pos[1]
-    #         self.angular_velocity = math.sqrt(dx*dx + dy*dy) * 0.01  # Tune this factor
-    #         if self.angular_velocity > 0.01:
-    #             self.inertia_axis = LVector3(-dy, dx, 0)
-    #             self.inertia_axis.normalize()
-    #             self.inertia_task = self.taskMgr.add(self.inertia_spin_task, "InertiaSpinTask")
-
-    # def inertia_spin_task(self, task):
-    #     if self.angular_velocity > 0.001:
-    #         # Rotate the camera or trackball
-    #         self.trackball.node().setHpr(
-    #             self.trackball.node().getH() + self.angular_velocity * self.inertia_axis.getX(),
-    #             self.trackball.node().getP() + self.angular_velocity * self.inertia_axis.getY(),
-    #             self.trackball.node().getR()
-    #         )
-    #         self.angular_velocity *= 0.96  # Damping factor
-    #         return Task.cont
-    #     else:
-    #         self.angular_velocity = 0.0
-    #         return Task.done
-    ####################
-
-    # def setup_mouse_picker(self):
-    #     self.picker = CollisionTraverser()
-    #     self.pq = CollisionHandlerQueue()
-    #     self.pickerNode = CollisionNode('mouseRay')
-    #     self.pickerNP = self.camera.attachNewNode(self.pickerNode)
-    #     self.pickerNode.setFromCollideMask(BitMask32.bit(1))
-    #     self.pickerRay = CollisionRay()
-    #     self.pickerNode.addSolid(self.pickerRay)
-    #     self.picker.addCollider(self.pickerNP, self.pq)
-    #     self.accept('mouse1', self.on_mouse_click)
-
-    # def on_mouse_click(self):
-    #     if self.mouseWatcherNode.hasMouse():
-    #         mpos = self.mouseWatcherNode.getMouse()
-    #         self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
-    #         self.picker.traverse(self.render)
-    #         if self.pq.getNumEntries() > 0:
-    #             self.pq.sortEntries()
-    #             pickedObj = self.pq.getEntry(0).getIntoNodePath()
-    #             # Move camera to look at the picked object's position
-    #             pos = pickedObj.getPos(self.render)
-    #             self.camera.lookAt(pos)
-    #             # Optionally, move the camera closer/farther as needed
-    # def on_mouse_click(self):
-    #     if self.mouseWatcherNode.hasMouse():
-    #         mpos = self.mouseWatcherNode.getMouse()
-    #         self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
-    #         self.picker.traverse(self.render)
-    #         if self.pq.getNumEntries() > 0:
-    #             self.pq.sortEntries()
-    #             pickedObj = self.pq.getEntry(0).getIntoNodePath()
-    #             pos = pickedObj.getPos(self.render)
-
-    #             # Move camera to a fixed distance from the object, along the current camera direction
-    #             cam_vec = self.camera.getQuat(self.render).getForward()
-    #             distance = (self.camera.getPos(self.render) - pos).length()
-    #             if distance < 1.0:
-    #                 distance = 10.0  # fallback if too close
-    #             new_cam_pos = pos - cam_vec * distance
-    #             self.camera.setPos(new_cam_pos)
-    #             self.camera.lookAt(pos)
-
-    #             # Recenter the trackball's origin to the picked object
-    #             self.trackball.node().setOrigin(pos)
-
     def on_mouse_click(self):
         if self.mouseWatcherNode.hasMouse():
             mpos = self.mouseWatcherNode.getMouse()
@@ -1298,25 +1431,31 @@ class EarthOrbitApp(ShowBase):
                 # Optionally reset HPR if you want to face the object directly
                 self.trackball.node().setHpr(0, 0, 0)
 
+    def add_task(self, task_func, name):
+        """Add a task to the task manager with a unique name."""
+        if not self.taskMgr.hasTaskNamed(name):
+            self.taskMgr.add(task_func, name)
+            for _func, _name in self.task_list:
+                if name == _name:
+                    return True # we already have this one
+            self.task_list.append((task_func, name))  # keep a list
+            return True
+        else:
+            print(f"Task '{name}' already exists.")
+            return False
+
     def pause_scene_animation(self):
         if self.scene_anim_running:
-            for name in self.scene_anim_task_names:
+            for func, name in self.task_list:
                 self.taskMgr.remove(name)
+            # keep the task list intact, so we can resume later
             self.scene_anim_running = False
 
     def resume_scene_animation(self):
         if not self.scene_anim_running:
             # Re-add all tasks (with correct function references)
-            self.taskMgr.add(self.orbit_task, "OrbitTask")
-            self.taskMgr.add(self.moon_orbit_task, "MoonOrbitTask")
-            self.taskMgr.add(self.mars_orbit_task, "MarsOrbitTask")
-            self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
-            self.taskMgr.add(self.particles_orbit_task, "ParticlesOrbitTask")
-            # Only add if the relevant objects exist:
-            if hasattr(self, "animate_orbit_satellite") and hasattr(self, "orbit_satellite"):
-                self.taskMgr.add(self.animate_orbit_satellite, "OrbitAnimTask")
-            # if hasattr(self, "hyperbolic_orbit_task"):
-            #     self.taskMgr.add(self.hyperbolic_orbit_task, "HyperbolicOrbitTask")
+            for func, name in self.task_list:
+                self.add_task(func, name)
             self.scene_anim_running = True
 
     def toggle_scene_animation(self):
@@ -1382,15 +1521,6 @@ class EarthOrbitApp(ShowBase):
             side = tangent.cross(up).normalized()
             up = side.cross(tangent).normalized()
 
-            # ring = []
-            # for j in range(num_sides):
-            #     theta = 2 * math.pi * j / num_sides
-            #     offset = side * math.cos(theta) * tube_radius + up * math.sin(theta) * tube_radius
-            #     pos = p + offset
-            #     vertex.addData3(pos)
-            #     normal.addData3(offset.normalized())
-            #     color_writer.addData4(*color)
-            #     ring.append(i * num_sides + j)
             fade_alpha = (i + 1) / len(points)  # 0 (oldest) to 1 (newest)
             ring = []
             for j in range(num_sides):
@@ -2019,7 +2149,7 @@ class EarthOrbitApp(ShowBase):
                     break
             return task.cont if (loop or t < t_max) else task.done
 
-        self.taskMgr.add(orbit_anim_task, "OrbitAnimTask")
+        self.add_task(orbit_anim_task, "OrbitAnimTask")
 
     def moon_satellite_orbit_task(self, task):
         angle = task.time * self.moon_satellite_orbit_speed
