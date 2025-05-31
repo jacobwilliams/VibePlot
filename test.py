@@ -44,6 +44,7 @@ loadPrcFileData('', 'gl-include-points-size true')
 
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
 MOON_RADIUS = EARTH_RADIUS / 4.0  # Radius of Moon in Panda3D units
+MARS_RADIUS = EARTH_RADIUS / 3.0  # Radius of Mars in Panda3D units
 # STARMAP_IMAGE = 'models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg'
 STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
@@ -160,12 +161,15 @@ class EarthOrbitApp(ShowBase):
         self.scene_anim_task_names = [
             "OrbitTask",
             "MoonOrbitTask",
+            "MarsOrbitTask",
             "RotateEarthTask",
             "ParticlesOrbitTask",
             # "OrbitAnimTask",
             # "HyperbolicOrbitTask",
             # Add any other task names you want to pause/resume
 ]
+        # self.taskMgr.doMethodLater(2.0, self.debug_tasks, "DebugTasks")  # debugging
+
         # inertia:
         # self.last_mouse_pos = None
         # self.angular_velocity = 0.0
@@ -322,6 +326,24 @@ class EarthOrbitApp(ShowBase):
         # 3D arrow axes for the Moon
         # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
         self.moon_axis_np = self.create_body_fixed_axes(self.moon, MOON_RADIUS)  # Create axes for the Moon
+
+
+        # Add Mars
+        self.mars = self.create_sphere(radius=MARS_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
+        self.mars.reparentTo(self.render)
+        self.mars.setPos(0, 0, 0)
+        tex = self.loader.loadTexture("models/2k_mars.jpg")
+        self.mars.setTexture(tex, 1)
+        self.mars_orbit_radius = EARTH_RADIUS * 4  # Distance from Earth center (tweak as desired)
+        self.mars_orbit_speed = 0.5  # radians per second (tweak for desired speed)
+        self.taskMgr.add(self.mars_orbit_task, "MarsOrbitTask")
+        self.mars_trace = []
+        self.mars_trace_length = 200  # Number of points to keep in the mars's trace
+        self.mars_trace_node = self.render.attachNewNode("mars_trace")
+        self.mars.setLightOff()
+        self.mars.setLight(dlnp)
+        self.mars.setShaderInput("sundir", sun_dir)
+        self.mars_axis_np = self.create_body_fixed_axes(self.mars, MARS_RADIUS)  # Create axes for the Moon
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -561,6 +583,12 @@ class EarthOrbitApp(ShowBase):
 
     # # def on_window_event(self, window):
     # #     self.update_hud_position()
+
+    def debug_tasks(self, task):
+        print(f"Active tasks: {[t.getName() for t in self.taskMgr.getTasks()]}")
+        print(f"Moon position: {self.moon.getPos()}")
+        print(f"Mars position: {self.mars.getPos()}")
+        return Task.again
 
     def create_body_fixed_axes(self, body, radius: float):
         # 3D body-fixed axes for a body.
@@ -919,6 +947,7 @@ class EarthOrbitApp(ShowBase):
             # Re-add all tasks (with correct function references)
             self.taskMgr.add(self.orbit_task, "OrbitTask")
             self.taskMgr.add(self.moon_orbit_task, "MoonOrbitTask")
+            self.taskMgr.add(self.mars_orbit_task, "MarsOrbitTask")
             self.taskMgr.add(self.rotate_earth_task, "RotateEarthTask")
             self.taskMgr.add(self.particles_orbit_task, "ParticlesOrbitTask")
             # Only add if the relevant objects exist:
@@ -1417,6 +1446,37 @@ class EarthOrbitApp(ShowBase):
                 segs.drawTo(pt)
         self.moon_trace_node.attachNewNode(segs.create())
         self.moon_trace_node.setTransparency(True)
+
+        return Task.cont
+
+    def mars_orbit_task(self, task):
+
+        angle = task.time * self.mars_orbit_speed
+        x = self.mars_orbit_radius * math.cos(angle)
+        y = self.mars_orbit_radius * math.sin(angle)
+        z = 0
+        self.mars.setPos(x, y, z)
+        self.mars.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
+
+        # Update mars trace
+        mars_pos = self.mars.getPos(self.render)
+        self.mars_trace.append(mars_pos)
+        if len(self.mars_trace) > self.mars_trace_length:
+            self.mars_trace.pop(0)
+        # Draw the trace
+        self.mars_trace_node.node().removeAllChildren()
+        segs = LineSegs()
+        segs.setThickness(3.0)
+        for i, pt in enumerate(self.mars_trace):
+            alpha = i / len(self.mars_trace)
+            segs.setColor(1.0, 0.1, 0, alpha)
+            if i == 0:
+                segs.moveTo(pt)
+            else:
+                segs.drawTo(pt)
+        self.mars_trace_node.attachNewNode(segs.create())
+        self.mars_trace_node.setTransparency(True)
+
 
         # if self.manifold_np:
         #     self.manifold_np.removeNode()
