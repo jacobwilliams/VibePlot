@@ -133,6 +133,13 @@ class EarthOrbitApp(ShowBase):
         # To make the view wider (fisheye effect), increase the FOV (e.g., 90).
         # To zoom in (narrower view), decrease the FOV (e.g., 30).
 
+        # update aspect ratio
+        width = self.win.getProperties().getXSize()
+        height = self.win.getProperties().getYSize()
+        if width > 0 and height > 0:
+            aspect = width / height
+            self.camLens.setAspectRatio(aspect)
+
         if parent_window is not None:
             props = WindowProperties()
             props.setParentWindow(parent_window)
@@ -282,6 +289,18 @@ class EarthOrbitApp(ShowBase):
         self.draw_country_boundaries("models/custom.geo.json", radius=EARTH_RADIUS + 0.001, lon_rotate = 180.0)
         # rotate because the texturemap is rotated...
 
+        # just a test:
+        #self.add_radiation_belt(inner_radius=EARTH_RADIUS*1.5, outer_radius=EARTH_RADIUS*2.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24)
+
+        # self.rings = self.add_saturn_rings(
+        #                     inner_radius=EARTH_RADIUS*1.2,
+        #                     outer_radius=EARTH_RADIUS*2.8,
+        #                     inclination_deg=15,  # Tilt the rings
+        #                     num_rings=7,         # More rings for detail
+        #                     transparency=0.7     # Slightly transparent
+        #                 )
+        # self.taskMgr.add(self.rotate_rings_task, "RotateRingsTask")
+
         # Add the Moon
         # self.moon = self.loader.loadModel("models/planet_sphere")
         self.moon = self.create_sphere(radius=MOON_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
@@ -300,24 +319,9 @@ class EarthOrbitApp(ShowBase):
         self.moon.setLightOff()
         self.moon.setLight(dlnp)
         self.moon.setShaderInput("sundir", sun_dir)
-        # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
         # 3D arrow axes for the Moon
-        arrow_ambient = AmbientLight("moon_arrow_ambient")
-        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
-        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
-        self.moon_axes_np = self.moon.attachNewNode("moon_axes")
-        self.moon_axes_np.setPos(0, 0, 0)
-        moon_x_arrow = self.create_arrow(shaft_length=2)
-        moon_x_arrow.setHpr(90, 0, 0)    # +X axis
-        moon_y_arrow = self.create_arrow(shaft_length=2)
-        moon_y_arrow.setHpr(180, 0, 0)   # +Y axis
-        moon_z_arrow = self.create_arrow(shaft_length=2)
-        moon_z_arrow.setHpr(0, 90, 0)    # +Z axis
-        for a in [moon_x_arrow, moon_y_arrow, moon_z_arrow]:
-            a.reparentTo(self.moon_axes_np)
-            a.setLightOff()
-            a.setLight(self.dlnp)
-            a.setLight(arrow_ambient_np)
+        # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
+        self.moon_axis_np = self.create_body_fixed_axes(self.moon, MOON_RADIUS)  # Create axes for the Moon
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -483,25 +487,7 @@ class EarthOrbitApp(ShowBase):
 
         #--------------------------------------------
         # Draw Earth-fixed coordinate axes (origin at Earth's center)
-
-        # lighting for the arrows only:
-        arrow_ambient = AmbientLight("arrow_ambient")
-        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))  # Brighter ambient just for arrow
-        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
-        self.axes_np = self.render.attachNewNode("axes")
-        self.axes_np.setPos(0, 0, 0)
-        self.x_arrow = self.create_arrow(EARTH_RADIUS*2)
-        self.x_arrow.setHpr(90, 0, 0)    # +X axis
-        self.y_arrow = self.create_arrow(EARTH_RADIUS*2)
-        self.y_arrow.setHpr(180, 0, 0)   # +Y axis
-        self.z_arrow = self.create_arrow(EARTH_RADIUS*2)
-        self.z_arrow.setHpr(0, 90, 0)    # +Z axis
-        for a in [self.x_arrow, self.y_arrow, self.z_arrow]:
-            a.reparentTo(self.axes_np)
-            a.setLightOff()               # Remove all inherited lights
-            a.setLight(self.dlnp)         # Sunlight (directional)
-            a.setLight(arrow_ambient_np)  # Apply only this ambient light
-        # self.earth_to_moon_arrow.setLight(arrow_ambient_np)
+        self.earth_axis_np = self.create_body_fixed_axes(self.earth, EARTH_RADIUS)
 
         # --- Example particles ---
         self.particles = []
@@ -573,8 +559,32 @@ class EarthOrbitApp(ShowBase):
 
         #self.draw_axis_grid()
 
-    # def on_window_event(self, window):
-    #     self.update_hud_position()
+    # # def on_window_event(self, window):
+    # #     self.update_hud_position()
+
+    def create_body_fixed_axes(self, body, radius: float):
+        # 3D body-fixed axes for a body.
+        arrow_ambient = AmbientLight("arrow_ambient")
+        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
+        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
+        axes_np = body.attachNewNode("axes")
+        axes_np.setPos(0, 0, 0)
+        x_arrow = self.create_body_fixed_arrow(radius)
+        x_arrow.setHpr(90, 0, 0)    # +X axis
+        y_arrow = self.create_body_fixed_arrow(radius)
+        y_arrow.setHpr(180, 0, 0)   # +Y axis
+        z_arrow = self.create_body_fixed_arrow(radius)
+        z_arrow.setHpr(0, 90, 0)    # +Z axis
+        for a in [x_arrow, y_arrow, z_arrow]:
+            a.reparentTo(axes_np)
+            a.setLightOff()
+            a.setLight(self.dlnp)
+            a.setLight(arrow_ambient_np)
+            a.setShaderOff(1)
+            a.setTextureOff(1)
+        axes_np.setShaderOff(1)  # Turn off shader inheritance completely
+        axes_np.setTextureOff(1)  # Turn off texture inheritance
+        return axes_np
 
     def toggle_particle_labels(self):
         self.labels_visible = not self.labels_visible
@@ -827,6 +837,13 @@ class EarthOrbitApp(ShowBase):
                 self.trackball.node().setPos(pos - cam_vec * distance)
                 # Optionally reset HPR if you want to face the object directly
                 self.trackball.node().setHpr(0, 0, 0)
+
+    def create_body_fixed_arrow(self, body_radius: float, color=(1, 1, 1, 1)):
+        shaft_length = body_radius * 2.0
+        shaft_radius = body_radius * 0.05
+        head_length = body_radius * 0.3
+        head_radius = body_radius * 0.1
+        return self.create_arrow(shaft_length, shaft_radius, head_length, head_radius, color=color)
 
     def create_arrow(self, shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
         """Create an arrow NodePath pointing along +Y."""
@@ -1144,7 +1161,7 @@ class EarthOrbitApp(ShowBase):
         # which messes up all the child objects.
         self.grid_np.setH(self.earth.getH())  # <-- rotate the lat/lon grid with the earth
         self.groundtrack_node.setH(self.earth.getH())
-        self.axes_np.setH(self.earth.getH())
+        self.earth_axis_np.setH(self.earth.getH())
 
         # Update sun direction in Earth's local space
         sun_dir_world = self.dlnp.getQuat(self.render).getForward()
@@ -1810,6 +1827,119 @@ class EarthOrbitApp(ShowBase):
         np.setLightOff()
         np.setTwoSided(True)
         np.setTransparency(True)
+
+    def add_saturn_rings(self, inner_radius=EARTH_RADIUS*1.2,
+                         outer_radius=EARTH_RADIUS*3.0,
+                         inclination_deg=10, num_rings=5,
+                         transparency=0.6):
+        """Create Saturn-like ring system around Earth"""
+
+        # Create parent node for all rings
+        ring_system = self.render.attachNewNode("ring_system")
+
+        # Apply inclination to the entire ring system
+        ring_system.setP(inclination_deg)
+
+        # Create multiple rings with gaps
+        ring_width = (outer_radius - inner_radius) / (num_rings * 2 - 1)
+
+        for i in range(num_rings):
+            # Calculate this ring's inner and outer radius
+            ring_inner = inner_radius + i * ring_width * 2
+            ring_outer = ring_inner + ring_width
+
+            # Vary color slightly for each ring
+            base_color = (0.8, 0.75, 0.6, transparency)  # Sandy color
+            color_variation = 0.1 * (i / num_rings)
+            ring_color = (
+                base_color[0] - color_variation,
+                base_color[1] - color_variation,
+                base_color[2] - color_variation,
+                base_color[3]
+            )
+
+            # Create the ring
+            ring = self.create_flat_ring(
+                inner_radius=ring_inner,
+                outer_radius=ring_outer,
+                color=ring_color,
+                segments=120,
+                num_subdivisions=8
+            )
+
+            ring.reparentTo(ring_system)
+            ring.setTwoSided(True)
+            ring.setTransparency(True)
+            ring.setBin('transparent', 30)
+
+        # Parent to Earth so it follows Earth's rotation
+        ring_system.reparentTo(self.earth)
+        # Also set these on the parent node to be extra sure
+        ring_system.setTextureOff(1)
+        ring_system.setShaderOff(1)
+
+        return ring_system
+
+    def create_flat_ring(self, inner_radius, outer_radius, color, segments=64, num_subdivisions=4):
+        """Create a flat ring with triangles for better texture mapping"""
+
+        format = GeomVertexFormat.getV3n3c4t2()
+        vdata = GeomVertexData('ring', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color_writer = GeomVertexWriter(vdata, 'color')
+        texcoord = GeomVertexWriter(vdata, 'texcoord')
+
+        tris = GeomTriangles(Geom.UHStatic)
+
+        # Create vertices for the ring
+        for i in range(segments + 1):
+            angle = 2 * math.pi * i / segments
+            cos_angle = math.cos(angle)
+            sin_angle = math.sin(angle)
+
+            # Create multiple subdivisions from inner to outer radius
+            for j in range(num_subdivisions + 1):
+                # Calculate radius for this subdivision
+                r = inner_radius + (outer_radius - inner_radius) * j / num_subdivisions
+
+                x = r * cos_angle
+                y = r * sin_angle
+                z = 0  # Flat ring
+
+                # Add vertex
+                vertex.addData3(x, y, z)
+                normal.addData3(0, 0, 1)  # Normal points up
+                color_writer.addData4(*color)
+                texcoord.addData2(i / segments, j / num_subdivisions)
+
+        # Create triangles
+        for i in range(segments):
+            for j in range(num_subdivisions):
+                # First triangle
+                v1 = i * (num_subdivisions + 1) + j
+                v2 = (i + 1) * (num_subdivisions + 1) + j
+                v3 = i * (num_subdivisions + 1) + (j + 1)
+                tris.addVertices(v1, v2, v3)
+
+                # Second triangle
+                v1 = (i + 1) * (num_subdivisions + 1) + j
+                v2 = (i + 1) * (num_subdivisions + 1) + (j + 1)
+                v3 = i * (num_subdivisions + 1) + (j + 1)
+                tris.addVertices(v1, v2, v3)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('ring')
+        node.addGeom(geom)
+
+        return NodePath(node)
+
+    def rotate_rings_task(self, task):
+        self.rings.setH(self.rings.getH() + 0.01)  # Slow rotation
+        return Task.cont
+
+###############################################
 
 app = EarthOrbitApp()
 
