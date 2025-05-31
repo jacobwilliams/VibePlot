@@ -579,7 +579,7 @@ class Body:
         self.grid_np.setTwoSided(True)
 
 class EarthOrbitApp(ShowBase):
-    def __init__(self, parent_window=None):
+    def __init__(self, parent_window=None, friction: float = 1.0):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
 
@@ -619,10 +619,9 @@ class EarthOrbitApp(ShowBase):
 
         # inertia:
         self.last_mouse_pos = None
-        self.mouse_prev_pos = None
         self.angular_velocity = Vec3(0, 0, 0)
         self.inertia_active = False
-        self.friction = 0.98  # Dampening factor (adjust as needed)
+        self.friction = min(abs(friction), 1.0) # Dampening factor for inertial rotation. should be between 0 [no inertial] and 1 [no friction]
 
         # Add mouse handlers
         # self.ignore("option-mouse1")
@@ -635,16 +634,17 @@ class EarthOrbitApp(ShowBase):
         # messenger.toggleVerbose()  # Enable verbose messenger output
         # self.accept("*", self.event_logger)  # debugging, log all events
 
+        self.accept("mouse1", self.stop_inertia)
 
-        #self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
-        #self.accept("alt-mouse1-up", self.on_alt_mouse_up)
+        self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
+        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
         # Add mouse handlers - use option key name for Mac compatibility
         self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
         # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
         self.accept("time-mouse1-up", self.on_alt_mouse_up) # Mac-specific
         # self.accept("alt-up", self.on_alt_mouse_up) # Mac-specific
 
-        self.accept("alt-mouse1", self.on_alt_mouse_down)     # Windows/Linux
+        # self.accept("alt-mouse1", self.on_alt_mouse_down)     # Windows/Linux
         # self.accept("alt-mouse1-up", self.on_alt_mouse_up)    # Windows/Linux
         # self.accept("shift-mouse1", self.on_alt_mouse_down)
         # self.accept("shift-mouse1-up", self.on_alt_mouse_up)
@@ -653,6 +653,7 @@ class EarthOrbitApp(ShowBase):
 
         # Task for inertial movement
         self.inertia_task = None
+        self.mouse_dragged = False
 
         self.hud_text = OnscreenText(
             text="Frame: 0",
@@ -1080,38 +1081,39 @@ class EarthOrbitApp(ShowBase):
     # #     self.update_hud_position()
 
     def event_logger(self, *args, **kwargs):
-        # if len(args) > 0 and (
-        #     "mouse" in args[0] or
-        #     "shift" in args[0] or
-        #     "alt" in args[0] or
-        #     "option" in args[0]
-        # ):
-        #     print(f"EVENT: {args[0]}")
-        print(f"EVENT: {args}, {kwargs}")  # Log all events for debugging
+        """Log all events for debugging"""
+        print(f"EVENT: {args}, {kwargs}")
 
     def on_alt_mouse_up(self, *args):
         """Stop tracking mouse and apply inertia if moving fast enough"""
-        print("Alt+Mouse up detected")  # Debug print
-        print(f"Angular velocity: {self.angular_velocity}")
         if self.mouse_task:
             self.taskMgr.remove(self.mouse_task)
             self.mouse_task = None
 
-        # Check if we have enough velocity for inertia
-        speed = self.angular_velocity.length()
-        if speed > 0.01:
+        # Only start inertia if the mouse was dragged
+        if self.mouse_dragged and self.angular_velocity.length() > 0.01:
             self.inertia_active = True
             self.inertia_task = self.taskMgr.add(self.apply_inertia_task, "InertiaTask")
+        self.mouse_dragged = False  # Reset for next interaction
+
+    def stop_inertia(self, *args):
+        self.inertia_active = False
+        if self.inertia_task:
+            self.taskMgr.remove(self.inertia_task)
+            self.inertia_task = None
 
     def on_alt_mouse_down(self):
         """Start tracking mouse for inertial rotation"""
         if self.mouseWatcherNode.hasMouse():
+
+            self.stop_inertia()  # Stop any existing inertia
+
             # Store current mouse position
             self.last_mouse_pos = self.mouseWatcherNode.getMouse()
-            self.mouse_prev_pos = self.last_mouse_pos
-
-            # Store current camera orientation as matrix
-            self.start_mat = self.trackball.node().getMat()
+            # Store current orientation as quaternion
+            mat = self.trackball.node().getMat()
+            self.start_quat = Quat()
+            self.start_quat.setFromMatrix(mat.getUpper3())
 
             # Start tracking mouse movement
             if self.mouse_task:
@@ -1126,60 +1128,87 @@ class EarthOrbitApp(ShowBase):
             # Angular velocity is now a 3D vector in camera's local coordinates
             self.angular_velocity = Vec3(0, 0, 0)
             self.inertia_active = False
-            print("Alt+Mouse down detected")
 
     def track_mouse_task(self, task):
-        """Track mouse movement and calculate angular velocity"""
         if self.mouseWatcherNode.hasMouse():
-            # Get current mouse position
             current_pos = self.mouseWatcherNode.getMouse()
-
             if self.last_mouse_pos:
-                # Calculate mouse movement delta
                 delta_x = current_pos.getX() - self.last_mouse_pos.getX()
                 delta_y = current_pos.getY() - self.last_mouse_pos.getY()
+                # If the mouse moved more than a small threshold, consider it a drag
+                if abs(delta_x) > 0.002 or abs(delta_y) > 0.002:
+                    self.mouse_dragged = True
 
-                # Apply rotation directly (trackball behavior)
-                self.trackball.node().setH(self.trackball.node().getH() - delta_x * 50)
-                self.trackball.node().setP(self.trackball.node().getP() - delta_y * 50)
+                # Sensitivity
+                angle_x = delta_x * 100
+                angle_y = -delta_y * 100
 
-                # Calculate angular velocity - IMPORTANT: match the sign used above
+                # Get current orientation as quaternion
+                mat = self.trackball.node().getMat()
+                cam_quat = Quat()
+                cam_quat.setFromMatrix(mat.getUpper3())
+
+                # Rotate around camera's local axes
+                quat_h = Quat()
+                quat_h.setFromAxisAngle(angle_x, Vec3(0, 0, 1))  # Z axis (up)
+                quat_p = Quat()
+                quat_p.setFromAxisAngle(angle_y, Vec3(1, 0, 0))  # X axis (right)
+
+                # Combine rotations: pitch then heading
+                new_quat = quat_h * quat_p * cam_quat
+
+                # Convert to Mat3 and then Mat4
+                rot_mat3 = Mat3()
+                new_quat.extractToMatrix(rot_mat3)
+                new_mat = Mat4(rot_mat3)
+                # Preserve position
+                new_mat.setRow(3, self.trackball.node().getMat().getRow3(3))
+                self.trackball.node().setMat(new_mat)
+
+                # Calculate angular velocity for inertia (in quaternion space)
                 dt = globalClock.getDt()
                 if dt > 0.001:
-                    # NOTE: We use -delta_x and -delta_y to match the rotation direction
-                    vx = -delta_x / dt
-                    vy = -delta_y / dt
+                    self.angular_velocity = Vec3(angle_y / dt, angle_x / dt, 0)
 
-                    # Apply velocity scaling - keep the signs consistent
-                    velocity_scale = 50.0
-                    self.angular_velocity = Vec3(vy * velocity_scale, vx * velocity_scale, 0)
-
-                    # Limit maximum velocity if needed
-                    max_speed = 100.0
-                    if self.angular_velocity.length() > max_speed:
-                        self.angular_velocity.normalize()
-                        self.angular_velocity *= max_speed
-
-            # Store current position for next frame
             self.last_mouse_pos = Point2(current_pos.getX(), current_pos.getY())
-
         return Task.cont
 
     def apply_inertia_task(self, task):
-        """Continue camera rotation with inertia after mouse release"""
         if not self.inertia_active:
             return Task.done
 
-        # Apply rotation based on current angular velocity - FIX SIGN DIRECTION
         dt = globalClock.getDt()
-        self.trackball.node().setP(self.trackball.node().getP() + self.angular_velocity.getX() * dt)
-        self.trackball.node().setH(self.trackball.node().getH() - self.angular_velocity.getY() * dt)
+        mat = self.trackball.node().getMat()
+        cam_quat = Quat()
+        cam_quat.setFromMatrix(mat.getUpper3())
 
-        # Apply friction to slow down movement
-        self.friction = 0.95
+        # Use angular velocity to create incremental rotation
+        angle_x = self.angular_velocity.getX() * dt
+        angle_y = self.angular_velocity.getY() * dt
+
+        quat_h = Quat()
+        quat_h.setFromAxisAngle(angle_y, Vec3(0, 0, 1))  # Z axis (up)
+        quat_p = Quat()
+        quat_p.setFromAxisAngle(angle_x, Vec3(1, 0, 0))  # X axis (right)
+
+        new_quat = quat_h * quat_p * cam_quat
+
+        rot_mat3 = Mat3()
+        new_quat.extractToMatrix(rot_mat3)
+        new_mat = Mat4(rot_mat3)
+        new_mat.setRow(3, mat.getRow3(3))  # Preserve position
+        self.trackball.node().setMat(new_mat)
+
+        # Apply friction
         self.angular_velocity *= self.friction
 
-        # Stop when velocity gets too small
+        # --- Clamp angular velocity to prevent instability ---
+        max_angular_velocity = 500.0
+        if self.angular_velocity.length() > max_angular_velocity:
+            self.angular_velocity.normalize()
+            self.angular_velocity *= max_angular_velocity
+        # ----------------------------------------------------
+
         if self.angular_velocity.length() < 1.0:
             self.inertia_active = False
             return Task.done
