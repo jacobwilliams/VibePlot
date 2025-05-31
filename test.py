@@ -48,6 +48,7 @@ MARS_RADIUS = EARTH_RADIUS / 3.0  # Radius of Mars in Panda3D units
 # STARMAP_IMAGE = 'models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg'
 STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
+VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 
 constellations = {
     "orion": [
@@ -123,6 +124,368 @@ def lonlat_to_xyz(lon, lat, radius):
     y = radius * math.cos(lat_rad) * math.sin(lon_rad)
     z = radius * math.sin(lat_rad)
     return x, y, z
+
+def create_body_fixed_arrow(body_radius: float, color=(1, 1, 1, 1)):
+    shaft_length = body_radius * 2.0
+    shaft_radius = body_radius * 0.05
+    head_length = body_radius * 0.3
+    head_radius = body_radius * 0.1
+    return create_arrow(shaft_length, shaft_radius, head_length, head_radius, color=color)
+
+def create_arrow(shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
+    """Create an arrow NodePath pointing along +Y."""
+    # Shaft (cylinder)
+    format = GeomVertexFormat.getV3n3c4()
+    vdata = GeomVertexData('arrow', format, Geom.UHStatic)
+    vertex = GeomVertexWriter(vdata, 'vertex')
+    normal = GeomVertexWriter(vdata, 'normal')
+    color_writer = GeomVertexWriter(vdata, 'color')
+    tris = GeomTriangles(Geom.UHStatic)
+    segments = 24
+
+    # Cylinder shaft
+    for i in range(segments + 1):
+        theta = 2 * math.pi * i / segments
+        x = shaft_radius * math.cos(theta)
+        z = shaft_radius * math.sin(theta)
+        # Bottom
+        vertex.addData3(x, 0, z)
+        normal.addData3(x, 0, z)
+        color_writer.addData4(*color)
+        # Top
+        vertex.addData3(x, shaft_length, z)
+        normal.addData3(x, 0, z)
+        color_writer.addData4(*color)
+    for i in range(segments):
+        a = i * 2
+        b = a + 1
+        c = ((i + 1) % segments) * 2
+        d = c + 1
+        tris.addVertices(a, b, d)
+        tris.addVertices(a, d, c)
+
+    # Cone head
+    base_idx = (segments + 1) * 2
+    tip = Vec3(0, shaft_length + head_length, 0)
+    for i in range(segments + 1):
+        theta = 2 * math.pi * i / segments
+        x = head_radius * math.cos(theta)
+        z = head_radius * math.sin(theta)
+        vertex.addData3(x, shaft_length, z)
+        normal_vec = Vec3(x, head_length * 0.5, z).normalized()
+        normal.addData3(normal_vec)
+        color_writer.addData4(*color)
+    vertex.addData3(tip)
+    normal.addData3(0, 1, 0)
+    color_writer.addData4(*color)
+    tip_idx = vertex.getWriteRow() - 1
+    for i in range(segments):
+        a = base_idx + i
+        b = base_idx + (i + 1) % segments
+        tris.addVertices(a, b, tip_idx)
+
+    geom = Geom(vdata)
+    geom.addPrimitive(tris)
+    node = GeomNode('arrow')
+    node.addGeom(geom)
+    arrow_np = NodePath(node)
+    arrow_np.setTwoSided(True)
+    # arrow_np.setBin('opaque', 10)
+    arrow_np.setPos(0, 0, 0)  # by default, center at origin
+
+    return arrow_np
+
+def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
+    format = GeomVertexFormat.getV3n3c4t2()
+    vdata = GeomVertexData('sphere', format, Geom.UHStatic)
+    vertex = GeomVertexWriter(vdata, 'vertex')
+    normal = GeomVertexWriter(vdata, 'normal')
+    color_writer = GeomVertexWriter(vdata, 'color')
+    texcoord = GeomVertexWriter(vdata, 'texcoord')
+    tris = GeomTriangles(Geom.UHStatic)
+
+    for i in range(num_lat + 1):
+        theta = math.pi * i / num_lat
+        sin_theta = math.sin(theta)
+        cos_theta = math.cos(theta)
+        v = i / num_lat  # V coordinate
+        for j in range(num_lon + 1):
+            phi = 2 * math.pi * j / num_lon
+            sin_phi = math.sin(phi)
+            cos_phi = math.cos(phi)
+            x = radius * sin_theta * cos_phi
+            y = radius * sin_theta * sin_phi
+            z = radius * cos_theta
+            u = j / num_lon  # U coordinate
+            vertex.addData3(x, y, z)
+            normal.addData3(Vec3(x, y, z).normalized())
+            color_writer.addData4(*color)
+            texcoord.addData2(u, 1 - v)
+
+    for i in range(num_lat):
+        for j in range(num_lon):
+            first = i * (num_lon + 1) + j
+            second = first + num_lon + 1
+            tris.addVertices(first, second, first + 1)
+            tris.addVertices(second, second + 1, first + 1)
+
+    geom = Geom(vdata)
+    geom.addPrimitive(tris)
+    node = GeomNode('sphere')
+    node.addGeom(geom)
+    sphere_np = NodePath(node)
+    return sphere_np
+
+class Body:
+
+    # notes:
+    # * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
+
+    def __init__(self, parent : ShowBase, name: str, radius : float, color=(1, 1, 1, 1),
+                 texture : str = None,
+                 day_tex : str = None, night_tex : str = None, sun_dir = LVector3(0, 0, 1),
+                 trace_length: int = 200,
+                 geojson_path : str = None, lon_rotate : str = 0.0,
+                 draw_grid: bool = False, draw_3d_axes: bool = True):
+
+        self.name = name
+        self.radius = radius
+        self.color = color
+        self.parent = parent
+
+        self._body = create_sphere(radius, num_lat=24, num_lon=48, color=color)
+        self._body.reparentTo(parent.render)
+        self._body.setPos(0, 0, 0)
+
+        self._body.setLightOff()
+        self._body.setLight(self.parent.dlnp)
+
+        if texture is not None:
+            tex = parent.loader.loadTexture(texture)
+            self._body.setTexture(tex, 1)
+        elif day_tex is not None and night_tex is not None:
+            # Load and apply Earth texture
+            day_tex = parent.loader.loadTexture(day_tex)
+            night_tex = parent.loader.loadTexture(night_tex)
+            self._body.setTexture(day_tex, 1)
+            self._body.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
+            self._body.setTexture(TextureStage("day"), day_tex)
+            self._body.setTexture(TextureStage("night"), night_tex)
+            self._body.setShaderInput("day", day_tex)
+            self._body.setShaderInput("night", night_tex)
+            # Set the sun direction uniform (should match your light direction)
+            self._body.setShaderInput("sundir", sun_dir)
+        else:
+            # no texture, just a color
+            self._body.setColor(*color)
+
+        if geojson_path:
+            self.draw_country_boundaries(geojson_path="models/custom.geo.json", lon_rotate=180.0)
+
+        if draw_grid:
+            self.draw_lat_lon_grid()
+
+        self.parent.taskMgr.add(self.orbit_task, f"{self._body}OrbitTask")
+
+        self.trace_length = trace_length  # Number of points to keep in the moon's trace
+        if self.trace_length:
+            self._trace = []
+            self._trace_node = self.parent.render.attachNewNode(f"{self._body}_trace")
+
+        if draw_3d_axes:
+            # 3D axes for the body
+            self.moon_axis_np = self.create_body_fixed_axes()
+
+        self._rotator = self._body.attachNewNode(f"{name}_rotator")
+        self.reparent_to_rotator()
+
+    def create_body_fixed_axes(self):
+        # 3D body-fixed axes for a body.
+        arrow_ambient = AmbientLight("arrow_ambient")
+        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
+        arrow_ambient_np = self.parent.render.attachNewNode(self.parent.arrow_ambient)
+        axes_np = self._body.attachNewNode("axes")
+        axes_np.setPos(0, 0, 0)
+        x_arrow = create_body_fixed_arrow(self.radius)
+        x_arrow.setHpr(90, 0, 0)    # +X axis
+        y_arrow = create_body_fixed_arrow(self.radius)
+        y_arrow.setHpr(180, 0, 0)   # +Y axis
+        z_arrow = create_body_fixed_arrow(self.radius)
+        z_arrow.setHpr(0, 90, 0)    # +Z axis
+        for a in [x_arrow, y_arrow, z_arrow]:
+            a.reparentTo(axes_np)
+            a.setLightOff()
+            a.setLight(self.parent.dlnp)
+            a.setLight(arrow_ambient_np)
+            a.setShaderOff(1)
+            a.setTextureOff(1)
+        axes_np.setShaderOff(1)  # Turn off shader inheritance completely
+        axes_np.setTextureOff(1)  # Turn off texture inheritance
+        return axes_np
+
+    def reparent_to_rotator(self):
+        # Reparent the body's children to the rotator node
+        for child in self._body.getChildren():
+            if child.getName() != f"{self.name}_rotator":
+                child.reparentTo(self._rotator)
+
+    def set_orientation(self, et: float):
+
+        # Get the rotation matrix from your function
+        # Assuming it returns a 3x3 numpy matrix or similar
+        rotation_matrix = self.get_rotation_matrix(et)
+
+        # Convert to Panda3D's Mat3
+        mat3 = Mat3(
+            rotation_matrix[0, 0], rotation_matrix[0, 1], rotation_matrix[0, 2],
+            rotation_matrix[1, 0], rotation_matrix[1, 1], rotation_matrix[1, 2],
+            rotation_matrix[2, 0], rotation_matrix[2, 1], rotation_matrix[2, 2]
+        )
+        quat = Quat()
+        quat.setFromMatrix(mat3)
+        self._rotator.setQuat(quat)
+
+    def get_rotation_matrix(self, et: float):
+
+        # e.g. call spice to get the body-fixed rotation matrix
+
+        rotation_matrix = np.eye(3)  # Identity matrix as a placeholder
+        return rotation_matrix
+
+    def get_position_vector(self, et: float):
+
+        # there is where we would maybe call an ephemeris
+
+        if self.name == "Venus":
+            venus_orbit_radius = EARTH_RADIUS * 2.5  # Example radius for Venus orbit
+            # Example for Venus, replace with actual logic
+            position_vector = np.array([venus_orbit_radius * math.cos(et), venus_orbit_radius * math.sin(et), 0.0])
+        else:
+            position_vector = np.array([0.0, 0.0, 0.0])
+        return position_vector
+
+    def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001):
+
+        with open(geojson_path, 'r') as f:
+            data = json.load(f)
+
+        segs = LineSegs()
+        segs.setThickness(1.2)
+        segs.setColor(0, 1, 0, 1)  # Green lines
+
+        for feature in data['features']:
+            for coords in feature['geometry']['coordinates']:
+                # Handle MultiPolygon and Polygon
+                if feature['geometry']['type'] == 'Polygon':
+                    rings = [coords]
+                else:
+                    rings = coords
+                for ring in rings:
+                    first = True
+                    for lon, lat in ring:
+                        lon = lon + lon_rotate
+                        x, y, z = lonlat_to_xyz(lon, lat, self.radius + radius_pad)
+                        if first:
+                            segs.moveTo(x, y, z)
+                            first = False
+                        else:
+                            segs.drawTo(x, y, z)
+
+        self.boundaries_np = self._body.attachNewNode(segs.create())
+        self.boundaries_np.setLightOff()
+        self.boundaries_np.setTwoSided(True)
+        self.boundaries_np.setTransparency(True)
+
+    def orbit_task(self, task):
+
+        #...fixed axis:
+        # angle = task.time * self.moon_orbit_speed
+        # x = self.moon_orbit_radius * math.cos(angle)
+        # y = self.moon_orbit_radius * math.sin(angle)
+        # z = 0
+        # self.moon.setPos(x, y, z)
+        # self.moon.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
+
+        et = task.time
+
+        self.set_orientation(et)
+        r = self.get_position_vector(et)
+        self._body.setPos(r[0], r[1], r[2])
+
+        # Update moon trace
+        moon_pos = self._body.getPos(self.parent.render)
+        self._trace.append(moon_pos)
+
+        if self.trace_length:
+            if len(self._trace) > self.trace_length:
+                self._trace.pop(0)
+        # Draw the trace
+        self._trace_node.node().removeAllChildren()
+        segs = LineSegs()
+        segs.setThickness(3.0)
+        for i, pt in enumerate(self._trace):
+            alpha = i / len(self._trace)
+            segs.setColor(0.7, 0.7, 1, alpha)
+            if i == 0:
+                segs.moveTo(pt)
+            else:
+                segs.drawTo(pt)
+        self._trace_node.attachNewNode(segs.create())
+        self._trace_node.setTransparency(True)
+
+        return Task.cont
+
+    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1)):
+        """Draws latitude and longitude grid lines on the body.
+
+        Args:
+            num_lat (int, optional): Number of latitude lines (excluding poles). Defaults to 9.
+            num_lon (int, optional): Number of longitude lines. Defaults to 18.
+            radius_pad (float, optional): how far above surface to draw the grid. Defaults to 0.01.
+            color (tuple, optional): RGBA color for the grid lines. Defaults to (1, 1, 1, 1) - white.
+        """
+
+        # --- Latitude/Longitude grid ---
+        grid = LineSegs()
+        grid.setThickness(1.0)
+        # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        grid.setColor(color)
+        radius = self.radius + radius_pad
+        # Latitude lines (horizontal circles)
+        for i in range(1, num_lat):
+            lat = math.pi * i / num_lat  # from 0 (north pole) to pi (south pole)
+            z = radius * math.cos(lat)
+            r_xy = radius * math.sin(lat)
+            segments = 72
+            for j in range(segments + 1):
+                lon = 2 * math.pi * j / segments
+                x = r_xy * math.cos(lon)
+                y = r_xy * math.sin(lon)
+                if j == 0:
+                    grid.moveTo(x, y, z)
+                else:
+                    grid.drawTo(x, y, z)
+        # Longitude lines (vertical half-circles)
+        for i in range(num_lon):
+            lon = 2 * math.pi * i / num_lon
+            segments = 72
+            for j in range(segments + 1):
+                lat = math.pi * j / segments
+                x = radius * math.sin(lat) * math.cos(lon)
+                y = radius * math.sin(lat) * math.sin(lon)
+                z = radius * math.cos(lat)
+                if j == 0:
+                    grid.moveTo(x, y, z)
+                else:
+                    grid.drawTo(x, y, z)
+
+        # the shader is effecting the grid lines, so do this:
+        # self.grid_np = self.parent.render.attachNewNode(grid.create())
+        self.grid_np = self._body.attachNewNode(grid.create())
+        self.grid_np.setShaderOff()
+        self.grid_np.setLightOff()
+        self.grid_np.setTwoSided(True)
+
 
 class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None):
@@ -256,8 +619,12 @@ class EarthOrbitApp(ShowBase):
         neutral_ambient_np = self.render.attachNewNode(neutral_ambient)
         self.render.setLight(neutral_ambient_np)
 
+        # light for the axis arrows:
+        self.arrow_ambient = AmbientLight("arrow_ambient")
+        self.arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
+
         # Load the Earth sphere
-        self.earth = self.create_sphere(radius=EARTH_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
+        self.earth = create_sphere(radius=EARTH_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
         self.earth.reparentTo(self.render)
         self.earth.setPos(0, 0, 0)
         # Load and apply Earth texture
@@ -283,7 +650,7 @@ class EarthOrbitApp(ShowBase):
         self.site_np.setPos(self.earth, site_x, site_y, site_z)
         if True:
             # Optional: add a small sphere to mark the site
-            site_marker = self.create_sphere(radius=0.02, num_lat=24, num_lon=48, color=(1,0,0,0.5))
+            site_marker = create_sphere(radius=0.02, num_lat=24, num_lon=48, color=(1,0,0,0.5))
             site_marker.reparentTo(self.site_np)
             site_marker.setShaderOff(1)   # so it won't have the earth texture
             site_marker.setTextureOff(1)  #
@@ -307,7 +674,7 @@ class EarthOrbitApp(ShowBase):
 
         # Add the Moon
         # self.moon = self.loader.loadModel("models/planet_sphere")
-        self.moon = self.create_sphere(radius=MOON_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
+        self.moon = create_sphere(radius=MOON_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
         self.moon.reparentTo(self.render)
         #self.moon.setScale(0.5)  # Relative to Earth (Earth=1, Moon~0.27)
         # self.moon.setScale(0.5, 0.5, 0.3)  # X, Y, Z scale - ellipsoidal shape
@@ -326,10 +693,12 @@ class EarthOrbitApp(ShowBase):
         # 3D arrow axes for the Moon
         # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
         self.moon_axis_np = self.create_body_fixed_axes(self.moon, MOON_RADIUS)  # Create axes for the Moon
-
+        self.moon_rotation_speed = 2.0  # Adjust speed as desired
+        self.moon_rotation = 0  # Current rotation angle
+        self.moon_axis_tilt = 6.68  # Moon's actual axial tilt in degrees
 
         # Add Mars
-        self.mars = self.create_sphere(radius=MARS_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
+        self.mars = create_sphere(radius=MARS_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
         self.mars.reparentTo(self.render)
         self.mars.setPos(0, 0, 0)
         tex = self.loader.loadTexture("models/2k_mars.jpg")
@@ -345,10 +714,13 @@ class EarthOrbitApp(ShowBase):
         self.mars.setShaderInput("sundir", sun_dir)
         self.mars_axis_np = self.create_body_fixed_axes(self.mars, MARS_RADIUS)  # Create axes for the Moon
 
+        #add another body using the Body class:
+        self.venus = Body(self, name="Venus", texture='models/2k_venus_surface.jpg', radius=VENUS_RADIUS, color=(1, 0.8, 0.6, 1))
+
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
         self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
-        self.moon_satellite = self.create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
+        self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
         self.moon_satellite.reparentTo(self.moon)  # Parent to the Moon so it follows Moon's orbit
         self.taskMgr.add(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
         # --- Visualize the satellite's orbit path around the Moon ---
@@ -463,7 +835,7 @@ class EarthOrbitApp(ShowBase):
         # self.satellite.reparentTo(self.render)
         # self.satellite = self.loader.loadModel("models/planet_sphere")
         # self.satellite = self.loader.loadModel("models/teapot")
-        self.satellite = self.create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
+        self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
         #self.satellite.setScale(0.1, 0.1, 0.1)
         #self.satellite.setColor(1, 0, 0, 1)
         self.satellite.reparentTo(self.render)
@@ -527,7 +899,7 @@ class EarthOrbitApp(ShowBase):
             # particle = self.loader.loadModel("models/planet_sphere")
             #particle.setScale(particle_radius)
             #particle.setColor(random.random(), random.random(), random.random(), 1)
-            particle = self.create_sphere(radius=particle_radius, num_lat=10, num_lon=20, color=(random.random(), random.random(), random.random(), 1))
+            particle = create_sphere(radius=particle_radius, num_lat=10, num_lon=20, color=(random.random(), random.random(), random.random(), 1))
             particle.reparentTo(self.render)
             self.particles.append(particle)
             self.particle_params.append((r, inclination, angle0, speed))
@@ -597,11 +969,11 @@ class EarthOrbitApp(ShowBase):
         arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
         axes_np = body.attachNewNode("axes")
         axes_np.setPos(0, 0, 0)
-        x_arrow = self.create_body_fixed_arrow(radius)
+        x_arrow = create_body_fixed_arrow(radius)
         x_arrow.setHpr(90, 0, 0)    # +X axis
-        y_arrow = self.create_body_fixed_arrow(radius)
+        y_arrow = create_body_fixed_arrow(radius)
         y_arrow.setHpr(180, 0, 0)   # +Y axis
-        z_arrow = self.create_body_fixed_arrow(radius)
+        z_arrow = create_body_fixed_arrow(radius)
         z_arrow.setHpr(0, 90, 0)    # +Z axis
         for a in [x_arrow, y_arrow, z_arrow]:
             a.reparentTo(axes_np)
@@ -681,47 +1053,6 @@ class EarthOrbitApp(ShowBase):
         grid_np.setLightOff()
         grid_np.setTwoSided(True)
         grid_np.setTransparency(True)
-
-    def create_sphere(self, radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
-        format = GeomVertexFormat.getV3n3c4t2()
-        vdata = GeomVertexData('sphere', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color_writer = GeomVertexWriter(vdata, 'color')
-        texcoord = GeomVertexWriter(vdata, 'texcoord')
-        tris = GeomTriangles(Geom.UHStatic)
-
-        for i in range(num_lat + 1):
-            theta = math.pi * i / num_lat
-            sin_theta = math.sin(theta)
-            cos_theta = math.cos(theta)
-            v = i / num_lat  # V coordinate
-            for j in range(num_lon + 1):
-                phi = 2 * math.pi * j / num_lon
-                sin_phi = math.sin(phi)
-                cos_phi = math.cos(phi)
-                x = radius * sin_theta * cos_phi
-                y = radius * sin_theta * sin_phi
-                z = radius * cos_theta
-                u = j / num_lon  # U coordinate
-                vertex.addData3(x, y, z)
-                normal.addData3(Vec3(x, y, z).normalized())
-                color_writer.addData4(*color)
-                texcoord.addData2(u, 1 - v)
-
-        for i in range(num_lat):
-            for j in range(num_lon):
-                first = i * (num_lon + 1) + j
-                second = first + num_lon + 1
-                tris.addVertices(first, second, first + 1)
-                tris.addVertices(second, second + 1, first + 1)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('sphere')
-        node.addGeom(geom)
-        sphere_np = NodePath(node)
-        return sphere_np
 
     def create_axes(self, body, length: int = 1.0, thickness: int = 3):
         """coordinate axes"""
@@ -865,76 +1196,6 @@ class EarthOrbitApp(ShowBase):
                 self.trackball.node().setPos(pos - cam_vec * distance)
                 # Optionally reset HPR if you want to face the object directly
                 self.trackball.node().setHpr(0, 0, 0)
-
-    def create_body_fixed_arrow(self, body_radius: float, color=(1, 1, 1, 1)):
-        shaft_length = body_radius * 2.0
-        shaft_radius = body_radius * 0.05
-        head_length = body_radius * 0.3
-        head_radius = body_radius * 0.1
-        return self.create_arrow(shaft_length, shaft_radius, head_length, head_radius, color=color)
-
-    def create_arrow(self, shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
-        """Create an arrow NodePath pointing along +Y."""
-        # Shaft (cylinder)
-        format = GeomVertexFormat.getV3n3c4()
-        vdata = GeomVertexData('arrow', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color_writer = GeomVertexWriter(vdata, 'color')
-        tris = GeomTriangles(Geom.UHStatic)
-        segments = 24
-
-        # Cylinder shaft
-        for i in range(segments + 1):
-            theta = 2 * math.pi * i / segments
-            x = shaft_radius * math.cos(theta)
-            z = shaft_radius * math.sin(theta)
-            # Bottom
-            vertex.addData3(x, 0, z)
-            normal.addData3(x, 0, z)
-            color_writer.addData4(*color)
-            # Top
-            vertex.addData3(x, shaft_length, z)
-            normal.addData3(x, 0, z)
-            color_writer.addData4(*color)
-        for i in range(segments):
-            a = i * 2
-            b = a + 1
-            c = ((i + 1) % segments) * 2
-            d = c + 1
-            tris.addVertices(a, b, d)
-            tris.addVertices(a, d, c)
-
-        # Cone head
-        base_idx = (segments + 1) * 2
-        tip = Vec3(0, shaft_length + head_length, 0)
-        for i in range(segments + 1):
-            theta = 2 * math.pi * i / segments
-            x = head_radius * math.cos(theta)
-            z = head_radius * math.sin(theta)
-            vertex.addData3(x, shaft_length, z)
-            normal_vec = Vec3(x, head_length * 0.5, z).normalized()
-            normal.addData3(normal_vec)
-            color_writer.addData4(*color)
-        vertex.addData3(tip)
-        normal.addData3(0, 1, 0)
-        color_writer.addData4(*color)
-        tip_idx = vertex.getWriteRow() - 1
-        for i in range(segments):
-            a = base_idx + i
-            b = base_idx + (i + 1) % segments
-            tris.addVertices(a, b, tip_idx)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('arrow')
-        node.addGeom(geom)
-        arrow_np = NodePath(node)
-        arrow_np.setTwoSided(True)
-        # arrow_np.setBin('opaque', 10)
-        arrow_np.setPos(0, 0, 0)  # by default, center at origin
-
-        return arrow_np
 
     def pause_scene_animation(self):
         if self.scene_anim_running:
@@ -1421,12 +1682,44 @@ class EarthOrbitApp(ShowBase):
 
     def moon_orbit_task(self, task):
 
+        #...fixed axis:
+        # angle = task.time * self.moon_orbit_speed
+        # x = self.moon_orbit_radius * math.cos(angle)
+        # y = self.moon_orbit_radius * math.sin(angle)
+        # z = 0
+        # self.moon.setPos(x, y, z)
+        # self.moon.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
+
         angle = task.time * self.moon_orbit_speed
         x = self.moon_orbit_radius * math.cos(angle)
         y = self.moon_orbit_radius * math.sin(angle)
         z = 0
         self.moon.setPos(x, y, z)
-        self.moon.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
+
+        # Set orientation for tidal locking (always same face to Earth)
+        # self.moon.setH(math.degrees(angle))
+
+        # add some rotation:
+        self.moon_rotation += self.moon_rotation_speed
+        self.moon.setH(math.degrees(angle) + self.moon_rotation)
+
+        # Apply axis tilt
+        self.moon.setP(self.moon_axis_tilt)
+
+        # Apply rotation around its own axis
+        rotation_angle = task.time * self.moon_rotation_speed
+
+        # Create a separate node for the moon's own rotation
+        if not hasattr(self, 'moon_rotator'):
+            self.moon_rotator = self.moon.attachNewNode("moon_rotator")
+            # Reparent the moon's children to this node
+            for child in self.moon.getChildren():
+                if child.getName() != "moon_rotator":
+                    child.reparentTo(self.moon_rotator)
+
+        # Rotate the moon around its own axis
+        self.moon_rotator.setR(rotation_angle)
+
 
         # Update moon trace
         moon_pos = self.moon.getPos(self.render)
@@ -1477,7 +1770,7 @@ class EarthOrbitApp(ShowBase):
         self.mars_trace_node.attachNewNode(segs.create())
         self.mars_trace_node.setTransparency(True)
 
-
+        # # Draw the moon's orbit as a translucent manifold
         # if self.manifold_np:
         #     self.manifold_np.removeNode()
         # self.manifold_np = self.draw_translucent_manifold(self.moon_trace, tube_radius=0.3, color=(1.0, 0.8, 1, 0.18))
@@ -1507,7 +1800,7 @@ class EarthOrbitApp(ShowBase):
         # # Remove old geometry
         # self.earth_to_moon_arrow.removeNode()
         # # Create a new arrow with updated end point
-        # self.earth_to_moon_arrow = self.create_arrow(
+        # self.earth_to_moon_arrow = create_arrow(
         #     start=Vec3(0, 0, 0),
         #     end=moon_pos,
         #     shaft_radius=0.05,
@@ -1698,7 +1991,7 @@ class EarthOrbitApp(ShowBase):
             # Scale star size by magnitude (smaller mag = bigger)
             size = max(0.05, 0.25 - 0.04 * (mag + 1.5))
             #color = (1, 0, 0, 1)  # white, or use color index if desired
-            star_np = self.create_sphere(radius=size, num_lat=6, num_lon=12, color=color)
+            star_np = create_sphere(radius=size, num_lat=6, num_lon=12, color=color)
             star_np.setPos(x, y, z)
             # star_np.reparentTo(self.render)
             star_np.reparentTo(self.star_sphere_np)
