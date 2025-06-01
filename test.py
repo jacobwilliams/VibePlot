@@ -241,6 +241,13 @@ class Body:
     # notes:
     # * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
 
+    # Body (self._body)
+    # └── Rotator (self._rotator)
+    #     ├── Sphere geometry (with texture)
+    #     ├── Axes
+    #     ├── Grid
+    #     └── Other visuals
+
     def __init__(self, parent : ShowBase, name: str, radius : float, color=(1, 1, 1, 1),
                  texture : str = None,
                  day_tex : str = None, night_tex : str = None, sun_dir = LVector3(0, 0, 1),
@@ -263,8 +270,14 @@ class Body:
         self.marker_nodes = []
         self.marker_labels = []  #  initialize marker labels list
 
+        # the rotator node is the parent of the body, so it can be rotated
+        # [it's the body-fixed frame]
+        #self._rotator = self._body.attachNewNode(f"{name}_rotator")
+        self._rotator = self.parent.render.attachNewNode(f"{name}_rotator")
+        self._rotator.setPos(0, 0, 0)
+
         self._body = create_sphere(radius, num_lat=24, num_lon=48, color=color)
-        self._body.reparentTo(parent.render)
+        self._body.reparentTo(self._rotator)
         self._body.setPos(0, 0, 0)
 
         self._body.setLightOff()
@@ -285,17 +298,20 @@ class Body:
             self._body.setShaderInput("night", night_tex)
             # Set the sun direction uniform (should match your light direction)
             self._body.setShaderInput("sundir", sun_dir)
+
+            self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
+
         else:
             # no texture, just a color
             self._body.setColor(*color)
 
         if geojson_path:
-            self.draw_country_boundaries(geojson_path="models/custom.geo.json", lon_rotate=180.0)
+            self.draw_country_boundaries(geojson_path=geojson_path, lon_rotate=lon_rotate)
 
         if draw_grid:
             self.draw_lat_lon_grid()
 
-        self.parent.add_task(self.orbit_task, f"{self._body}OrbitTask")
+        self.parent.add_task(self.orbit_task, f"{self.name}OrbitTask")
 
         self.trace_length = trace_length  # Number of points to keep in the moon's trace
         if self.trace_length:
@@ -304,17 +320,89 @@ class Body:
 
         if draw_3d_axes:
             # 3D axes for the body
-            self.moon_axis_np = self.create_body_fixed_axes()
+            self.axis_np = self.create_body_fixed_axes()
 
-        self._rotator = self._body.attachNewNode(f"{name}_rotator")
         self.reparent_to_rotator()
+
+    def update_earth_shader_sundir_task(self, task):
+        self.update_shader_sundir(self.parent.dlnp)
+        return Task.cont
+
+    def update_shader_sundir(self, sun_np):
+        """Update the sundir shader input for this body, given a sun NodePath."""
+        # Get sun direction in world space
+        sun_dir_world = sun_np.getQuat(self.parent.render).getForward()
+        # Get sun direction in this body's local space
+        sun_dir_local = self._body.getQuat(self.parent.render).conjugate().xform(sun_dir_world)
+        # Optional: rotate by 180 deg around Z to match texture orientation
+        rot180 = Mat3.rotateMatNormaxis(180, Vec3(0, 0, 1))
+        sun_dir_local_rot = rot180.xform(sun_dir_local)
+        self._body.setShaderInput("sundir", sun_dir_local_rot)
+
+    def setup_body_fixed_camera(self, view_distance: float = None):
+
+        if not view_distance:
+            view_distance = self.radius * 10.0
+
+        # Parent the trackball to the body's _rotator node
+        self.parent.trackball.reparentTo(self._rotator)
+        self.parent.trackball.node().setOrigin(Point3(0, 0, 0))
+        self.parent.trackball.node().setPos(0, -view_distance, 0)
+        self.parent.trackball.node().setHpr(0, 0, 0)
+        # Parent the camera to the trackball
+        self.parent.camera.reparentTo(self.parent.trackball)
+        # self.parent.camera.reparentTo(self._rotator)  # jw try this
+        self.parent.camera.setPos(0, -view_distance, 0)
+        self.parent.camera.lookAt(self._rotator)
+
+    # def setup_body_fixed_camera(self, view_distance: float = None):
+    #     if not view_distance:
+    #         view_distance = self.radius * 10.0
+
+    #     # Get body position in world space
+    #     body_pos = self._rotator.getPos(self.parent.render)
+
+    #     # Keep BOTH as children of render (do NOT reparent camera to trackball)
+    #     self.parent.trackball.reparentTo(self.parent.render)
+    #     self.parent.camera.reparentTo(self.parent.render)
+
+    #     # Set up trackball
+    #     self.parent.trackball.node().setPos(body_pos)
+    #     self.parent.trackball.node().setOrigin(body_pos)  # Set rotation center to body
+
+    #     # Position camera at the same distance from body as it is from Earth in the default view
+    #     direction = Vec3(0, 1, 0)  # Default viewing direction
+    #     self.parent.camera.setPos(body_pos - direction * view_distance)
+    #     self.parent.camera.lookAt(body_pos)
+
+    # def setup_body_fixed_camera(self, view_distance: float = None):
+    #     if not view_distance:
+    #         view_distance = self.radius * 10.0
+
+    #     # Get body position in world space
+    #     body_pos = self._rotator.getPos(self.parent.render)
+
+    #     # KEEP BOTH as children of render (don't change parent relationships)
+    #     self.parent.trackball.reparentTo(self.parent.render)
+    #     self.parent.camera.reparentTo(self.parent.render)
+
+    #     # Move both to the same position relative to the body
+    #     self.parent.trackball.setPos(body_pos)
+    #     self.parent.trackball.node().setOrigin(Point3(0, 0, 0))
+    #     self.parent.trackball.node().setPos(0, view_distance, 0)
+
+    #     # Set camera to same position as trackball
+    #     self.parent.camera.setPos(self.parent.trackball.getPos())
+
+    #     # Both look at body
+    #     self.parent.camera.lookAt(body_pos)
 
     def create_body_fixed_axes(self):
         # 3D body-fixed axes for a body.
         arrow_ambient = AmbientLight("arrow_ambient")
         arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
         arrow_ambient_np = self.parent.render.attachNewNode(self.parent.arrow_ambient)
-        axes_np = self._body.attachNewNode("axes")
+        axes_np = self._rotator.attachNewNode("axes")
         axes_np.setPos(0, 0, 0)
         x_arrow = create_body_fixed_arrow(self.radius)
         x_arrow.setHpr(90, 0, 0)    # +X axis
@@ -331,6 +419,7 @@ class Body:
             a.setTextureOff(1)
         axes_np.setShaderOff(1)  # Turn off shader inheritance completely
         axes_np.setTextureOff(1)  # Turn off texture inheritance
+        # axes_np = self._rotator.attachNewNode("axes")
         return axes_np
 
     def reparent_to_rotator(self):
@@ -355,24 +444,135 @@ class Body:
         quat.setFromMatrix(mat3)
         self._rotator.setQuat(quat)
 
-    def get_rotation_matrix(self, et: float):
-
-        # e.g. call spice to get the body-fixed rotation matrix
-
-        rotation_matrix = np.eye(3)  # Identity matrix as a placeholder
-        return rotation_matrix
-
     def get_position_vector(self, et: float):
 
         # there is where we would maybe call an ephemeris
+        # For simplicity, let's assume the following orbits:
 
-        if self.name == "Venus":
-            venus_orbit_radius = EARTH_RADIUS * 2.5  # Example radius for Venus orbit
-            # Example for Venus, replace with actual logic
-            position_vector = np.array([venus_orbit_radius * math.cos(et), venus_orbit_radius * math.sin(et), 0.0])
-        else:
-            position_vector = np.array([0.0, 0.0, 0.0])
-        return position_vector
+        # Earth stays at the origin
+        if self.name.lower() == "earth":
+            return np.array([0.0, 0.0, 0.0])
+
+        # Moon orbits Earth
+        elif self.name.lower() == "moon":
+            # Use the same parameters as before
+            moon_orbit_radius = EARTH_RADIUS * 3  # Distance from Earth center
+            moon_orbit_speed = 0.7  # radians per second
+            angle = et * moon_orbit_speed
+            x = moon_orbit_radius * math.cos(angle)
+            y = moon_orbit_radius * math.sin(angle)
+            z = 0
+            return np.array([x, y, z])
+
+        # Mars orbits Earth (for demo)
+        elif self.name.lower() == "mars":
+            mars_orbit_radius = EARTH_RADIUS * 4
+            mars_orbit_speed = 0.5  # radians per second
+            angle = et * mars_orbit_speed
+            x = mars_orbit_radius * math.cos(angle)
+            y = mars_orbit_radius * math.sin(angle)
+            z = 0
+            return np.array([x, y, z])
+
+        # Venus (example, you can adjust as needed)
+        elif self.name.lower() == "venus":
+            venus_orbit_radius = EARTH_RADIUS * 2.5
+            angle = et * 0.3  # example speed
+            x = venus_orbit_radius * math.cos(angle)
+            y = venus_orbit_radius * math.sin(angle)
+            z = 0
+            return np.array([x, y, z])
+
+        # Default: stationary at origin
+        return np.array([0.0, 0.0, 0.0])
+
+    def get_rotation_matrix(self, et: float):
+
+        # e.g. call spice to get the body-fixed rotation matrix
+        # This is a simplified example, replace with actual logic to get the rotation matrix
+
+        if self.name.lower() == "earth":
+            # Adjust this speed for your visualization (radians/sec)
+            earth_rotation_speed = 2 * math.pi / 24.0  # 1 revolution per 24 "seconds" (for demo)
+            angle = et * earth_rotation_speed
+            # Earth's actual axial tilt is about 23.44 degrees
+            tilt_deg = 23.44
+            tilt_rad = math.radians(tilt_deg)
+            # Rotation matrix: Rz(angle) * Rx(tilt)
+            Rz = np.array([
+                [math.cos(angle), -math.sin(angle), 0],
+                [math.sin(angle),  math.cos(angle), 0],
+                [0, 0, 1]
+            ])
+            Rx = np.array([
+                [1, 0, 0],
+                [0, math.cos(tilt_rad), -math.sin(tilt_rad)],
+                [0, math.sin(tilt_rad),  math.cos(tilt_rad)]
+            ])
+            return Rz @ Rx
+
+        # Moon: rotates with its orbit (tidal locking)
+        elif self.name.lower() == "moon":
+            moon_orbit_speed = 0.7  # radians per second
+            angle = et * moon_orbit_speed
+            # Tidal locking: always same face to Earth
+            # Add axis tilt if desired (e.g., 6.68 degrees)
+            tilt_deg = 6.68
+            tilt_rad = math.radians(tilt_deg)
+            # Rotation matrix: Rz(angle) * Rx(tilt)
+            Rz = np.array([
+                [math.cos(angle), -math.sin(angle), 0],
+                [math.sin(angle),  math.cos(angle), 0],
+                [0, 0, 1]
+            ])
+            Rx = np.array([
+                [1, 0, 0],
+                [0, math.cos(tilt_rad), -math.sin(tilt_rad)],
+                [0, math.sin(tilt_rad),  math.cos(tilt_rad)]
+            ])
+            return Rz @ Rx
+
+        # Mars: rotates as it orbits
+        elif self.name.lower() == "mars":
+            mars_orbit_speed = 0.5  # radians per second
+            angle = et * mars_orbit_speed
+            # Mars axial tilt: 25.19 degrees
+            tilt_deg = 25.19
+            tilt_rad = math.radians(tilt_deg)
+            # Rotation matrix: Rz(angle) * Rx(tilt)
+            Rz = np.array([
+                [math.cos(angle), -math.sin(angle), 0],
+                [math.sin(angle),  math.cos(angle), 0],
+                [0, 0, 1]
+            ])
+            Rx = np.array([
+                [1, 0, 0],
+                [0, math.cos(tilt_rad), -math.sin(tilt_rad)],
+                [0, math.sin(tilt_rad),  math.cos(tilt_rad)]
+            ])
+            return Rz @ Rx
+
+        # Venus: slow retrograde rotation (example)
+        elif self.name.lower() == "venus":
+            venus_rotation_speed = -0.1  # negative for retrograde
+            angle = et * venus_rotation_speed
+            # Venus axial tilt: 177.4 degrees (almost upside down)
+            tilt_deg = 177.4
+            tilt_rad = math.radians(tilt_deg)
+            Rz = np.array([
+                [math.cos(angle), -math.sin(angle), 0],
+                [math.sin(angle),  math.cos(angle), 0],
+                [0, 0, 1]
+            ])
+            Rx = np.array([
+                [1, 0, 0],
+                [0, math.cos(tilt_rad), -math.sin(tilt_rad)],
+                [0, math.sin(tilt_rad),  math.cos(tilt_rad)]
+            ])
+            return Rz @ Rx
+
+        # Default: identity
+        return np.eye(3)
 
     def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001):
 
@@ -381,7 +581,7 @@ class Body:
 
         segs = LineSegs()
         segs.setThickness(1.2)
-        segs.setColor(0, 1, 0, 1)  # Green lines
+        segs.setColor(1, 1, 1, 0.5)
 
         for feature in data['features']:
             for coords in feature['geometry']['coordinates']:
@@ -414,7 +614,7 @@ class Body:
 
         # Get the new position
         new_pos = Point3(r[0], r[1], r[2])
-        self._body.setPos(new_pos)
+        self._rotator.setPos(new_pos)
 
         # Update body trace
         body_pos = self._body.getPos(self.parent.render)
@@ -589,6 +789,8 @@ class EarthOrbitApp(ShowBase):
         self.camLens.setFov(60, 60)
         # To make the view wider (fisheye effect), increase the FOV (e.g., 90).
         # To zoom in (narrower view), decrease the FOV (e.g., 30).
+        # self.camLens.setNear(0.1)
+        # self.camLens.setFar(1000)
 
         # update aspect ratio
         width = self.win.getProperties().getXSize()
@@ -597,10 +799,46 @@ class EarthOrbitApp(ShowBase):
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
 
+        # ... this is what ai keeps trying to get me to do...
+        # self.camera.reparentTo(self.trackball)
+        # self.camera.setPos(0, 0, 0)
+        # self.camera.setHpr(0, 0, 0)
+        # self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+        # self.trackball.node().setOrigin(Point3(0, 0, 0))
+        # self.trackball.node().setForwardScale(1.0)
+        # self.trackball.node().setRelTo(self.render)
+        # self.camera.lookAt(0, 0, 0)
+
+        # Why It Works
+        # In your implementation, the setup is:
+        #
+        # Independent Nodes: Both the camera and trackball are direct children of render (not parented to each other)
+        # Same Position: They are both positioned at the same coordinates
+        # Separate Control: The trackball serves as a reference for rotation behavior, but doesn't directly control the camera
+        # This approach works because:
+        #
+        # The MouseWatcher component in your app is configured to manipulate the camera directly
+        # The trackball node defines parameters like rotation origin and behavior
+        # When using this setup, pan/zoom/rotate work because both nodes maintain their specific roles
+
+        #...original code... this works initially
         self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
         self.trackball.node().setForwardScale(1.0)
         self.trackball.node().setRelTo(self.render)
+        self.camera.setPos(0, EARTH_RADIUS * 10, 0)
+        self.camera.lookAt(0, 0, 0)
+
+        # #...try some permutations...
+        # self.trackball.node().setRelTo(self.render)
+        # self.trackball.node().setOrigin(Point3(0, 0, 0))
+        # self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+        # self.trackball.node().setForwardScale(1.0)
+        # self.camera.reparentTo(self.trackball)
+        # self.camera.setPos(0, -EARTH_RADIUS * 10, 0)
+        # self.camera.setHpr(0, 0, 0)
+        # self.camera.lookAt(0, 0, 0)
+
 
         if parent_window is not None:
             props = WindowProperties()
@@ -623,11 +861,9 @@ class EarthOrbitApp(ShowBase):
         self.accept("2", self.focus_on_moon)
         self.accept("3", self.focus_on_mars)
         self.accept("4", self.focus_on_venus)
-        self.accept("5", self.focus_on_satellite)
 
         # Store original camera state for restoration
         self.original_camera_state = None
-        self.current_focus = "earth"  # Track what we're currently focused on
 
 
         self.scene_anim_running = True
@@ -683,16 +919,6 @@ class EarthOrbitApp(ShowBase):
             mayChange=True
         )
         self.frame_count = 0
-
-        self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
-        self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.trackball.node().setForwardScale(1.0)
-        self.trackball.node().setRelTo(self.render)
-
-        # Set initial camera position
-        self.camera.setPos(0, EARTH_RADIUS * 10, 0)
-        self.camera.lookAt(0, 0, 0)
-        # self.camera.reparentTo(self.trackball)  #
 
         self.inertia_axis = Vec3(0, 0, 1)  # Default axis
         self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
@@ -761,21 +987,18 @@ class EarthOrbitApp(ShowBase):
 
         self.trackball_origin_task_ref = None
 
-        # Load the Earth sphere
-        self.earth = create_sphere(radius=EARTH_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
-        self.earth.reparentTo(self.render)
-        self.earth.setPos(0, 0, 0)
-        # Load and apply Earth texture
-        day_tex = self.loader.loadTexture("models/land_ocean_ice_cloud_2048.jpg")
-        night_tex = self.loader.loadTexture("models/2k_earth_nightmap.jpg")
-        self.earth.setTexture(day_tex, 1)
-        self.earth.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
-        self.earth.setTexture(TextureStage("day"), day_tex)
-        self.earth.setTexture(TextureStage("night"), night_tex)
-        self.earth.setShaderInput("day", day_tex)
-        self.earth.setShaderInput("night", night_tex)
-        # Set the sun direction uniform (should match your light direction)
-        self.earth.setShaderInput("sundir", sun_dir)
+        self.earth = Body(
+            self,
+            name="Earth",
+            radius=EARTH_RADIUS,
+            day_tex="models/land_ocean_ice_cloud_2048.jpg",
+            night_tex="models/2k_earth_nightmap.jpg",
+            geojson_path="models/custom.geo.json",
+            lon_rotate=180.0,  # Rotate to match texture orientation
+            color=(1, 1, 1, 1),
+            draw_grid=True,
+            draw_3d_axes=True
+        )
 
         # put a site on the Earth:
         site_lat = 0.519   # radians
@@ -784,8 +1007,8 @@ class EarthOrbitApp(ShowBase):
         site_x = earth_radius * math.cos(site_lat) * math.cos(site_lon)
         site_y = earth_radius * math.cos(site_lat) * math.sin(site_lon)
         site_z = earth_radius * math.sin(site_lat)
-        self.site_np = self.earth.attachNewNode("site")
-        self.site_np.setPos(self.earth, site_x, site_y, site_z)
+        self.site_np = self.earth._body.attachNewNode("site")
+        self.site_np.setPos(self.earth._body, site_x, site_y, site_z)
         if True:
             # Optional: add a small sphere to mark the site
             site_marker = create_sphere(radius=0.02, num_lat=24, num_lon=48, color=(1,0,0,0.5))
@@ -795,7 +1018,7 @@ class EarthOrbitApp(ShowBase):
             site_marker.setTransparency(True)
         self.site_lines_np = None
 
-        self.draw_country_boundaries("models/custom.geo.json", radius=EARTH_RADIUS + 0.001, lon_rotate = 180.0)
+        #self.draw_country_boundaries("models/custom.geo.json", radius=EARTH_RADIUS + 0.001, lon_rotate = 180.0)
         # rotate because the texturemap is rotated...
 
         # just a test:
@@ -810,50 +1033,25 @@ class EarthOrbitApp(ShowBase):
         #                 )
         # self.add_task(self.rotate_rings_task, "RotateRingsTask")
 
-        # Add the Moon
-        # self.moon = self.loader.loadModel("models/planet_sphere")
-        self.moon = create_sphere(radius=MOON_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
-        self.moon.reparentTo(self.render)
-        #self.moon.setScale(0.5)  # Relative to Earth (Earth=1, Moon~0.27)
-        # self.moon.setScale(0.5, 0.5, 0.3)  # X, Y, Z scale - ellipsoidal shape
-        self.moon.setPos(0, 0, 0)
-        tex = self.loader.loadTexture("models/lroc_color_poles_1k.jpg")
-        self.moon.setTexture(tex, 1)
-        self.moon_orbit_radius = EARTH_RADIUS * 3  # Distance from Earth center (tweak as desired)
-        self.moon_orbit_speed = 0.7  # radians per second (tweak for desired speed)
-        self.add_task(self.moon_orbit_task, "MoonOrbitTask")
-        self.moon_trace = []
-        self.moon_trace_length = 200  # Number of points to keep in the moon's trace
-        self.moon_trace_node = self.render.attachNewNode("moon_trace")
-        self.moon.setLightOff()
-        self.moon.setLight(dlnp)
-        self.moon.setShaderInput("sundir", sun_dir)
-        # 3D arrow axes for the Moon
-        # self.moon_axes_np = self.create_axes(self.moon, length = 2 * MOON_RADIUS)  # coordinate axes for the Moon
-        self.moon_axis_np = self.create_body_fixed_axes(self.moon, MOON_RADIUS)  # Create axes for the Moon
-        self.moon_rotation_speed = 2.0  # Adjust speed as desired
-        self.moon_rotation = 0  # Current rotation angle
-        self.moon_axis_tilt = 6.68  # Moon's actual axial tilt in degrees
+        self.moon = Body(
+            self,
+            name="Moon",
+            radius=MOON_RADIUS,
+            texture="models/lroc_color_poles_1k.jpg",
+            color=(1, 1, 1, 1),
+            draw_3d_axes=True
+        )
 
-        # Add Mars
-        self.mars = create_sphere(radius=MARS_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
-        self.mars.reparentTo(self.render)
-        self.mars.setPos(0, 0, 0)
-        tex = self.loader.loadTexture("models/2k_mars.jpg")
-        self.mars.setTexture(tex, 1)
-        self.mars_orbit_radius = EARTH_RADIUS * 4  # Distance from Earth center (tweak as desired)
-        self.mars_orbit_speed = 0.5  # radians per second (tweak for desired speed)
-        self.add_task(self.mars_orbit_task, "MarsOrbitTask")
-        self.mars_trace = []
-        self.mars_trace_length = 200  # Number of points to keep in the mars's trace
-        self.mars_trace_node = self.render.attachNewNode("mars_trace")
-        self.mars.setLightOff()
-        self.mars.setLight(dlnp)
-        self.mars.setShaderInput("sundir", sun_dir)
-        self.mars_axis_np = self.create_body_fixed_axes(self.mars, MARS_RADIUS)  # Create axes for the Moon
+        self.mars = Body(
+            self,
+            name="Mars",
+            radius=MARS_RADIUS,
+            texture="models/2k_mars.jpg",
+            color=(1, 1, 1, 1),
+            draw_grid=True,
+            draw_3d_axes=True
+        )
 
-        #add another body using the Body class:
-        # self.venus = Body(self, name="Venus", texture='models/2k_venus_surface.jpg', radius=VENUS_RADIUS, color=(1, 0.8, 0.6, 1))
         self.venus = Body(self,
                  name="Venus",
                  texture='models/2k_venus_surface.jpg',
@@ -869,7 +1067,7 @@ class EarthOrbitApp(ShowBase):
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
         self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
         self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
-        self.moon_satellite.reparentTo(self.moon)  # Parent to the Moon so it follows Moon's orbit
+        self.moon_satellite.reparentTo(self.moon._body)  # Parent to the Moon so it follows Moon's orbit
         self.add_task(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
         # --- Visualize the satellite's orbit path around the Moon ---
         moon_orbit_segs = LineSegs()
@@ -889,52 +1087,52 @@ class EarthOrbitApp(ShowBase):
                 moon_orbit_segs.moveTo(x, y_incl, z_incl)
             else:
                 moon_orbit_segs.drawTo(x, y_incl, z_incl)
-        self.moon_satellite_orbit_np = self.moon.attachNewNode(moon_orbit_segs.create())
+        self.moon_satellite_orbit_np = self.moon._body.attachNewNode(moon_orbit_segs.create())
         # self.moon_satellite_orbit_np.setTransparency(True)
         self.moon_satellite_orbit_np.setLightOff()
         self.moon_satellite.setTextureOff(1)  # so it doesn't use the moon texture
         self.moon_satellite.setShaderOff(1)
 
-        # --- Latitude/Longitude grid ---
-        grid = LineSegs()
-        grid.setThickness(1.0)
-        # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
-        grid.setColor(1, 1, 1, 1)  # White, fully opaque
-        radius = EARTH_RADIUS + 0.01
-        num_lat = 9   # Number of latitude lines (excluding poles)
-        num_lon = 18  # Number of longitude lines
-        # Latitude lines (horizontal circles)
-        for i in range(1, num_lat):
-            lat = math.pi * i / num_lat  # from 0 (north pole) to pi (south pole)
-            z = radius * math.cos(lat)
-            r_xy = radius * math.sin(lat)
-            segments = 72
-            for j in range(segments + 1):
-                lon = 2 * math.pi * j / segments
-                x = r_xy * math.cos(lon)
-                y = r_xy * math.sin(lon)
-                if j == 0:
-                    grid.moveTo(x, y, z)
-                else:
-                    grid.drawTo(x, y, z)
-        # Longitude lines (vertical half-circles)
-        for i in range(num_lon):
-            lon = 2 * math.pi * i / num_lon
-            segments = 72
-            for j in range(segments + 1):
-                lat = math.pi * j / segments
-                x = radius * math.sin(lat) * math.cos(lon)
-                y = radius * math.sin(lat) * math.sin(lon)
-                z = radius * math.cos(lat)
-                if j == 0:
-                    grid.moveTo(x, y, z)
-                else:
-                    grid.drawTo(x, y, z)
-        # the shader is effecting the grid lines, so do this:
-        self.grid_np = self.render.attachNewNode(grid.create())
-        self.grid_np.setShaderOff()
-        self.grid_np.setLightOff()
-        self.grid_np.setTwoSided(True)
+        # # --- Latitude/Longitude grid ---
+        # grid = LineSegs()
+        # grid.setThickness(1.0)
+        # # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        # grid.setColor(1, 1, 1, 1)  # White, fully opaque
+        # radius = EARTH_RADIUS + 0.01
+        # num_lat = 9   # Number of latitude lines (excluding poles)
+        # num_lon = 18  # Number of longitude lines
+        # # Latitude lines (horizontal circles)
+        # for i in range(1, num_lat):
+        #     lat = math.pi * i / num_lat  # from 0 (north pole) to pi (south pole)
+        #     z = radius * math.cos(lat)
+        #     r_xy = radius * math.sin(lat)
+        #     segments = 72
+        #     for j in range(segments + 1):
+        #         lon = 2 * math.pi * j / segments
+        #         x = r_xy * math.cos(lon)
+        #         y = r_xy * math.sin(lon)
+        #         if j == 0:
+        #             grid.moveTo(x, y, z)
+        #         else:
+        #             grid.drawTo(x, y, z)
+        # # Longitude lines (vertical half-circles)
+        # for i in range(num_lon):
+        #     lon = 2 * math.pi * i / num_lon
+        #     segments = 72
+        #     for j in range(segments + 1):
+        #         lat = math.pi * j / segments
+        #         x = radius * math.sin(lat) * math.cos(lon)
+        #         y = radius * math.sin(lat) * math.sin(lon)
+        #         z = radius * math.cos(lat)
+        #         if j == 0:
+        #             grid.moveTo(x, y, z)
+        #         else:
+        #             grid.drawTo(x, y, z)
+        # # the shader is effecting the grid lines, so do this:
+        # self.grid_np = self.render.attachNewNode(grid.create())
+        # self.grid_np.setShaderOff()
+        # self.grid_np.setLightOff()
+        # self.grid_np.setTwoSided(True)
 
         if False:
             # --- Equatorial plane (square, translucent) ---
@@ -1019,17 +1217,12 @@ class EarthOrbitApp(ShowBase):
         self.orbit_np.reparentTo(self.render)
 
         self.add_task(self.orbit_task, "OrbitTask")
-        self.add_task(self.rotate_earth_task, "RotateEarthTask")
 
         # to pulsate the orbit line:
         # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
 
         # self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
         # self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
-
-        #--------------------------------------------
-        # Draw Earth-fixed coordinate axes (origin at Earth's center)
-        self.earth_axis_np = self.create_body_fixed_axes(self.earth, EARTH_RADIUS)
 
         # --- Example particles ---
         self.particles = []
@@ -1118,99 +1311,19 @@ class EarthOrbitApp(ShowBase):
             self.trackball.node().setPos(self.original_camera_state['pos'])
             self.trackball.node().setHpr(self.original_camera_state['hpr'])
             self.trackball.node().setOrigin(self.original_camera_state['origin'])
-            self.current_focus = "earth"
-
-    def focus_on_body(self, body_node, body_name, distance_multiplier=3.0):
-        """Focus camera on a specific body."""
-        if body_name != "earth":
-            view_distance = globals()[f"{body_name.upper()}_RADIUS"] * distance_multiplier
-            self.setup_body_fixed_camera(body_node, view_distance)
-            # Start or restart the origin tracking task
-            if hasattr(self, 'trackball_origin_task_ref') and self.trackball_origin_task_ref:
-                self.taskMgr.remove(self.trackball_origin_task_ref)
-            self.trackball_origin_task_ref = self.taskMgr.add(self.track_body_origin_task, "TrackBodyOriginTask")
-        else:
-            # Restore camera to Earth view
-            self.trackball.reparentTo(self.render)
-            self.camera.reparentTo(self.trackball)
-            if hasattr(self, 'trackball_origin_task_ref') and self.trackball_origin_task_ref:
-                self.taskMgr.remove(self.trackball_origin_task_ref)
-                self.trackball_origin_task_ref = None
-            self.trackball.node().setOrigin(Point3(0, 0, 0))
-            self.trackball.node().setPos(0, EARTH_RADIUS * distance_multiplier, 0)
-            self.camera.setPos(0, 0, 0)
-            self.camera.lookAt(0, 0, 0)
-
-    def track_body_origin_task(self, task):
-        """Update trackball origin to follow the body's position."""
-        if self.current_focus != "earth" and self.tracked_body:
-            body_pos = self.tracked_body.getPos(self.render)
-            self.trackball.node().setOrigin(body_pos)
-        return Task.cont
-
-    def setup_body_fixed_camera(self, body_node, view_distance):
-        """Setup camera to be in body-fixed reference frame."""
-        # Create a reference node attached to the body
-        if not hasattr(self, 'body_fixed_ref'):
-            self.body_fixed_ref = body_node.attachNewNode("body_fixed_ref")
-        else:
-            self.body_fixed_ref.reparentTo(body_node)
-
-        # Position the reference node at the desired viewing distance
-        self.body_fixed_ref.setPos(0, -view_distance, 0)  # Behind the body
-
-        # Parent the camera to this reference node
-        self.camera.reparentTo(self.body_fixed_ref)
-        self.camera.setPos(0, 0, 0)
-        self.camera.lookAt(body_node)
 
     def focus_on_earth(self):
-        """Focus camera on Earth"""
-        if self.current_focus != "earth":
-            # Stop tracking task when returning to Earth
-            if hasattr(self, 'tracking_task') and self.tracking_task:
-                self.taskMgr.remove(self.tracking_task)
-                self.tracking_task = None
-
-            if self.original_camera_state:
-                self.restore_original_camera()
-            else:
-                self.focus_on_body(self.earth, "earth", 5.0)
-        else:
-            # If already on Earth, recenter to default view
-            self.recenter_on_earth()
+        self.earth.setup_body_fixed_camera()
+        # self.recenter_on_earth()  # or this ...
 
     def focus_on_moon(self):
-        """Focus camera on Moon"""
-        self.focus_on_body(self.moon, "moon", 4.0)
+        self.moon.setup_body_fixed_camera()
 
     def focus_on_mars(self):
-        """Focus camera on Mars"""
-        self.focus_on_body(self.mars, "mars", 4.0)
+        self.mars.setup_body_fixed_camera()
 
     def focus_on_venus(self):
-        """Focus camera on Venus"""
-        self.focus_on_body(self.venus._body, "venus", 6.0)
-
-    def focus_on_satellite(self):
-        """Focus camera on the orbiting satellite"""
-        self.focus_on_body(self.satellite, "satellite", 3.0)
-
-    def recenter_on_earth(self):
-        """Reset camera and trackball to look at Earth's center"""
-        # Stop tracking task
-        if hasattr(self, 'tracking_task') and self.tracking_task:
-            self.taskMgr.remove(self.tracking_task)
-            self.tracking_task = None
-
-        self.trackball.node().setHpr(0, 0, 0)
-        self.trackball.node().setPos(0, EARTH_RADIUS*10, 0)
-        self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.camera.setPos(0, -(EARTH_RADIUS*10), 0)
-        self.camera.lookAt(0, 0, 0)
-        self.current_focus = "earth"
-        self.original_camera_state = None  # Clear stored state
-        print("Camera recentered on Earth")
+        self.venus.setup_body_fixed_camera()
 
     def event_logger(self, *args, **kwargs):
         """Log all events for debugging"""
@@ -1357,30 +1470,6 @@ class EarthOrbitApp(ShowBase):
         print(f"Moon position: {self.moon.getPos()}")
         print(f"Mars position: {self.mars.getPos()}")
         return Task.again
-
-    def create_body_fixed_axes(self, body, radius: float):
-        # 3D body-fixed axes for a body.
-        arrow_ambient = AmbientLight("arrow_ambient")
-        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
-        arrow_ambient_np = self.render.attachNewNode(arrow_ambient)
-        axes_np = body.attachNewNode("axes")
-        axes_np.setPos(0, 0, 0)
-        x_arrow = create_body_fixed_arrow(radius)
-        x_arrow.setHpr(90, 0, 0)    # +X axis
-        y_arrow = create_body_fixed_arrow(radius)
-        y_arrow.setHpr(180, 0, 0)   # +Y axis
-        z_arrow = create_body_fixed_arrow(radius)
-        z_arrow.setHpr(0, 90, 0)    # +Z axis
-        for a in [x_arrow, y_arrow, z_arrow]:
-            a.reparentTo(axes_np)
-            a.setLightOff()
-            a.setLight(self.dlnp)
-            a.setLight(arrow_ambient_np)
-            a.setShaderOff(1)
-            a.setTextureOff(1)
-        axes_np.setShaderOff(1)  # Turn off shader inheritance completely
-        axes_np.setTextureOff(1)  # Turn off texture inheritance
-        return axes_np
 
     def toggle_particle_labels(self):
         self.labels_visible = not self.labels_visible
@@ -1535,26 +1624,6 @@ class EarthOrbitApp(ShowBase):
             grid_np.setTwoSided(True)
             grid_np.setTransparency(True)
 
-    def create_axes(self, body, length: int = 1.0, thickness: int = 3):
-        """coordinate axes"""
-        axes = LineSegs()
-        axes.setThickness(thickness)
-        # X axis (red)
-        axes.setColor(1, 0, 0, 1)
-        axes.moveTo(0, 0, 0)
-        axes.drawTo(length, 0, 0)
-        # Y axis (green)
-        axes.setColor(0, 1, 0, 1)
-        axes.moveTo(0, 0, 0)
-        axes.drawTo(0, length, 0)
-        # Z axis (blue)
-        axes.setColor(0, 0, 1, 1)
-        axes.moveTo(0, 0, 0)
-        axes.drawTo(0, 0, length)
-        axes_np = body.attachNewNode(axes.create())
-        axes_np.setLightOff()
-        return axes_np
-
     def toggle_movie_recording(self):
         self.record_movie = not self.record_movie
         if self.record_movie:
@@ -1630,12 +1699,36 @@ class EarthOrbitApp(ShowBase):
         else:
             self.resume_scene_animation()
 
+    # def recenter_on_earth(self):
+    #     # Reset camera and trackball to look at Earth's center
+    #     self.trackball.reparentTo(self.render)
+    #     self.camera.reparentTo(self.trackball)
+
+    #     # Reset trackball transform
+    #     self.trackball.node().setHpr(0, 0, 0)
+    #     self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+    #     self.trackball.node().setOrigin(Point3(0, 0, 0))
+    #     self.trackball.node().setForwardScale(1.0)
+    #     self.trackball.node().setRelTo(self.render)
+
+    #     # Camera must be at the origin relative to the trackball
+    #     self.camera.setPos(0, 0, 0)
+    #     self.camera.setHpr(0, 0, 0)
+    #     self.camera.lookAt(0, 0, 0)
+
     def recenter_on_earth(self):
-        # Reset camera and trackball to look at Earth's center
+        # Reset trackball to original position
+        self.trackball.reparentTo(self.render)
         self.trackball.node().setHpr(0, 0, 0)
-        self.trackball.node().setPos(0, EARTH_RADIUS*10, 0)
+        self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.camera.setPos(0, -(EARTH_RADIUS*10), 0)
+        self.trackball.node().setForwardScale(1.0)
+        self.trackball.node().setRelTo(self.render)
+
+        # DO NOT parent camera to trackball - in your working setup they are separate
+        # Set camera position to match initial setup
+        self.camera.reparentTo(self.render)  # Ensure camera is directly under render
+        self.camera.setPos(0, EARTH_RADIUS * 10, 0)  # Same position as initial setup
         self.camera.lookAt(0, 0, 0)
 
     def line_intersects_sphere(self, p1, p2, sphere_center, sphere_radius):
@@ -1811,7 +1904,7 @@ class EarthOrbitApp(ShowBase):
         if sat_vec.length() != 0:
             ground_point = sat_vec.normalized() * (EARTH_RADIUS + .001)
             # Convert to Earth's local coordinates
-            ground_point_local = self.earth.getRelativePoint(self.render, ground_point)
+            ground_point_local = self.earth._body.getRelativePoint(self.render, ground_point)
             self.groundtrack_trace.append(ground_point_local)
 
             # uncomment to make it a trace:
@@ -1838,26 +1931,6 @@ class EarthOrbitApp(ShowBase):
             img = img.reshape((tex.getYSize(), tex.getXSize(), 3))
             img = np.flipud(img)  # Flip vertically
             self.movie_writer.append_data(img)
-
-        return Task.cont
-
-    def rotate_earth_task(self, task):
-        self.earth.setH(self.earth.getH() + 0.4)  # Adjust speed as desired
-
-        # we have to do all this because the earth uses a custom shader,
-        # which messes up all the child objects.
-        self.grid_np.setH(self.earth.getH())  # <-- rotate the lat/lon grid with the earth
-        self.groundtrack_node.setH(self.earth.getH())
-        self.earth_axis_np.setH(self.earth.getH())
-
-        # Update sun direction in Earth's local space
-        sun_dir_world = self.dlnp.getQuat(self.render).getForward()
-        sun_dir_local = self.earth.getQuat(self.render).conjugate().xform(sun_dir_world)
-        # self.earth.setShaderInput("sundir", sun_dir_local)
-        # Rotate sun_dir_local by -90 degrees around Z to match texture orientation
-        rot90 = Mat3.rotateMatNormaxis(180, Vec3(0, 0, 1))
-        sun_dir_local_rot = rot90.xform(sun_dir_local)
-        self.earth.setShaderInput("sundir", sun_dir_local_rot)
 
         return Task.cont
 
@@ -2547,36 +2620,6 @@ class EarthOrbitApp(ShowBase):
         sky_grid_np.setLightOff()
         sky_grid_np.setTransparency(True)
         sky_grid_np.setTwoSided(True)
-
-    def draw_country_boundaries(self, geojson_path, radius=EARTH_RADIUS + 0.001, lon_rotate = 0.0):
-        with open(geojson_path) as f:
-            data = json.load(f)
-
-        segs = LineSegs()
-        segs.setThickness(1.2)
-        segs.setColor(0, 1, 0, 1)  # Green lines
-
-        for feature in data['features']:
-            for coords in feature['geometry']['coordinates']:
-                # Handle MultiPolygon and Polygon
-                if feature['geometry']['type'] == 'Polygon':
-                    rings = [coords]
-                else:
-                    rings = coords
-                for ring in rings:
-                    first = True
-                    for lon, lat in ring:
-                        lon = lon + lon_rotate
-                        x, y, z = lonlat_to_xyz(lon, lat, radius)
-                        if first:
-                            segs.moveTo(x, y, z)
-                            first = False
-                        else:
-                            segs.drawTo(x, y, z)
-        np = self.earth.attachNewNode(segs.create())
-        np.setLightOff()
-        np.setTwoSided(True)
-        np.setTransparency(True)
 
     def add_saturn_rings(self, inner_radius=EARTH_RADIUS*1.2,
                          outer_radius=EARTH_RADIUS*3.0,
