@@ -675,6 +675,9 @@ class EarthOrbitApp(ShowBase):
         self.camera.lookAt(0, 0, 0)
         # self.camera.reparentTo(self.trackball)  #
 
+        self.inertia_axis = Vec3(0, 0, 1)  # Default axis
+        self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
+
         self.star_sphere_np = self.render.attachNewNode("star_sphere")
 
         if USE_STAR_IMAGE:
@@ -1135,40 +1138,49 @@ class EarthOrbitApp(ShowBase):
             if self.last_mouse_pos:
                 delta_x = current_pos.getX() - self.last_mouse_pos.getX()
                 delta_y = current_pos.getY() - self.last_mouse_pos.getY()
+
                 # If the mouse moved more than a small threshold, consider it a drag
                 if abs(delta_x) > 0.002 or abs(delta_y) > 0.002:
                     self.mouse_dragged = True
 
                 # Sensitivity
-                angle_x = delta_x * 100
-                angle_y = -delta_y * 100
+                angle_heading = delta_x * 30      # Horizontal drag = heading (around up)
+                angle_pitch   = -delta_y * 30     # Vertical drag = pitch (around right)
 
-                # Get current orientation as quaternion
                 mat = self.trackball.node().getMat()
                 cam_quat = Quat()
                 cam_quat.setFromMatrix(mat.getUpper3())
 
-                # Rotate around camera's local axes
-                quat_h = Quat()
-                quat_h.setFromAxisAngle(angle_x, Vec3(0, 0, 1))  # Z axis (up)
-                quat_p = Quat()
-                quat_p.setFromAxisAngle(angle_y, Vec3(1, 0, 0))  # X axis (right)
+                # Get local axes
+                right = mat.xformVec(Vec3(1, 0, 0)).normalized()
+                up = mat.xformVec(Vec3(0, 0, 1)).normalized()
 
-                # Combine rotations: pitch then heading
-                new_quat = quat_h * quat_p * cam_quat
+                # Compose axis and angle for this frame
+                axis = (right * angle_pitch) + (up * angle_heading)
+                angle = axis.length()
+                if angle > 0:
+                    axis = axis.normalized()
+                    quat = Quat()
+                    quat.setFromAxisAngle(angle, axis)
+                    new_quat = quat * cam_quat
+                else:
+                    new_quat = cam_quat
 
-                # Convert to Mat3 and then Mat4
                 rot_mat3 = Mat3()
                 new_quat.extractToMatrix(rot_mat3)
                 new_mat = Mat4(rot_mat3)
-                # Preserve position
                 new_mat.setRow(3, self.trackball.node().getMat().getRow3(3))
                 self.trackball.node().setMat(new_mat)
 
-                # Calculate angular velocity for inertia (in quaternion space)
+                # Calculate angular velocity for inertia - STORE THE ACTUAL AXIS AND ANGLE RATE
                 dt = globalClock.getDt()
-                if dt > 0.001:
-                    self.angular_velocity = Vec3(angle_y / dt, angle_x / dt, 0)
+                if dt > 0.001 and angle > 0:
+                    # Store the rotation axis and angular speed
+                    self.inertia_axis = axis  # The actual rotation axis used
+                    self.inertia_angular_speed = angle / dt  # Angular speed in radians/sec
+
+                    # Also store component velocities for compatibility
+                    self.angular_velocity = Vec3(angle_pitch / dt, angle_heading / dt, 0)
 
             self.last_mouse_pos = Point2(current_pos.getX(), current_pos.getY())
         return Task.cont
@@ -1178,38 +1190,37 @@ class EarthOrbitApp(ShowBase):
             return Task.done
 
         dt = globalClock.getDt()
-        mat = self.trackball.node().getMat()
-        cam_quat = Quat()
-        cam_quat.setFromMatrix(mat.getUpper3())
 
-        # Use angular velocity to create incremental rotation
-        angle_x = self.angular_velocity.getX() * dt
-        angle_y = self.angular_velocity.getY() * dt
+        # Use the SAME rotation method as manual dragging
+        if hasattr(self, 'inertia_axis') and hasattr(self, 'inertia_angular_speed'):
+            # Get current camera matrix
+            mat = self.trackball.node().getMat()
+            cam_quat = Quat()
+            cam_quat.setFromMatrix(mat.getUpper3())
 
-        quat_h = Quat()
-        quat_h.setFromAxisAngle(angle_y, Vec3(0, 0, 1))  # Z axis (up)
-        quat_p = Quat()
-        quat_p.setFromAxisAngle(angle_x, Vec3(1, 0, 0))  # X axis (right)
+            # Apply rotation using the stored axis and current angular speed
+            angle_this_frame = self.inertia_angular_speed * dt
 
-        new_quat = quat_h * quat_p * cam_quat
+            if angle_this_frame > 0:
+                quat = Quat()
+                quat.setFromAxisAngle(angle_this_frame, self.inertia_axis)
+                new_quat = quat * cam_quat
 
-        rot_mat3 = Mat3()
-        new_quat.extractToMatrix(rot_mat3)
-        new_mat = Mat4(rot_mat3)
-        new_mat.setRow(3, mat.getRow3(3))  # Preserve position
-        self.trackball.node().setMat(new_mat)
+                rot_mat3 = Mat3()
+                new_quat.extractToMatrix(rot_mat3)
+                new_mat = Mat4(rot_mat3)
+                new_mat.setRow(3, mat.getRow3(3))
+                self.trackball.node().setMat(new_mat)
 
-        # Apply friction
-        self.angular_velocity *= self.friction
+            # Apply friction to angular speed
+            self.inertia_angular_speed *= self.friction
 
-        # --- Clamp angular velocity to prevent instability ---
-        max_angular_velocity = 500.0
-        if self.angular_velocity.length() > max_angular_velocity:
-            self.angular_velocity.normalize()
-            self.angular_velocity *= max_angular_velocity
-        # ----------------------------------------------------
-
-        if self.angular_velocity.length() < 1.0:
+            # Stop when speed gets too small
+            if self.inertia_angular_speed < 1.0:
+                self.inertia_active = False
+                return Task.done
+        else:
+            # Fallback to old method if axis not available
             self.inertia_active = False
             return Task.done
 
