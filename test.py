@@ -597,6 +597,11 @@ class EarthOrbitApp(ShowBase):
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
 
+        self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+        self.trackball.node().setOrigin(Point3(0, 0, 0))
+        self.trackball.node().setForwardScale(1.0)
+        self.trackball.node().setRelTo(self.render)
+
         if parent_window is not None:
             props = WindowProperties()
             props.setParentWindow(parent_window)
@@ -612,6 +617,18 @@ class EarthOrbitApp(ShowBase):
 
         self.accept("a", self.toggle_scene_animation)  # Press 'a' to toggle all animation
         # self.accept("window-event", self.on_window_event)  # for moving HUD
+
+        # Add key bindings for switching camera focus
+        self.accept("1", self.focus_on_earth)
+        self.accept("2", self.focus_on_moon)
+        self.accept("3", self.focus_on_mars)
+        self.accept("4", self.focus_on_venus)
+        self.accept("5", self.focus_on_satellite)
+
+        # Store original camera state for restoration
+        self.original_camera_state = None
+        self.current_focus = "earth"  # Track what we're currently focused on
+
 
         self.scene_anim_running = True
 
@@ -642,6 +659,13 @@ class EarthOrbitApp(ShowBase):
         # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
         # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
         self.accept("time-mouse1-up", self.on_alt_mouse_up)
+
+
+        # Initialize tracking variables
+        self.tracked_body = None
+        self.tracked_distance = 0
+        self.tracking_task = None
+
 
         # Task for tracking mouse during drag
         self.mouse_task = None
@@ -734,6 +758,8 @@ class EarthOrbitApp(ShowBase):
         # light for the axis arrows:
         self.arrow_ambient = AmbientLight("arrow_ambient")
         self.arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
+
+        self.trackball_origin_task_ref = None
 
         # Load the Earth sphere
         self.earth = create_sphere(radius=EARTH_RADIUS, num_lat=24, num_lon=48, color=(1,1,1,1))
@@ -1077,6 +1103,114 @@ class EarthOrbitApp(ShowBase):
 
     # # def on_window_event(self, window):
     # #     self.update_hud_position()
+
+    def store_current_camera_state(self):
+        """Store the current camera position and orientation"""
+        self.original_camera_state = {
+            'pos': self.trackball.node().getPos(),
+            'hpr': self.trackball.node().getHpr(),
+            'origin': self.trackball.node().getOrigin()
+        }
+
+    def restore_original_camera(self):
+        """Restore the camera to its stored state"""
+        if self.original_camera_state:
+            self.trackball.node().setPos(self.original_camera_state['pos'])
+            self.trackball.node().setHpr(self.original_camera_state['hpr'])
+            self.trackball.node().setOrigin(self.original_camera_state['origin'])
+            self.current_focus = "earth"
+
+    def focus_on_body(self, body_node, body_name, distance_multiplier=3.0):
+        """Focus camera on a specific body."""
+        if body_name != "earth":
+            view_distance = globals()[f"{body_name.upper()}_RADIUS"] * distance_multiplier
+            self.setup_body_fixed_camera(body_node, view_distance)
+            # Start or restart the origin tracking task
+            if hasattr(self, 'trackball_origin_task_ref') and self.trackball_origin_task_ref:
+                self.taskMgr.remove(self.trackball_origin_task_ref)
+            self.trackball_origin_task_ref = self.taskMgr.add(self.track_body_origin_task, "TrackBodyOriginTask")
+        else:
+            # Restore camera to Earth view
+            self.trackball.reparentTo(self.render)
+            self.camera.reparentTo(self.trackball)
+            if hasattr(self, 'trackball_origin_task_ref') and self.trackball_origin_task_ref:
+                self.taskMgr.remove(self.trackball_origin_task_ref)
+                self.trackball_origin_task_ref = None
+            self.trackball.node().setOrigin(Point3(0, 0, 0))
+            self.trackball.node().setPos(0, EARTH_RADIUS * distance_multiplier, 0)
+            self.camera.setPos(0, 0, 0)
+            self.camera.lookAt(0, 0, 0)
+
+    def track_body_origin_task(self, task):
+        """Update trackball origin to follow the body's position."""
+        if self.current_focus != "earth" and self.tracked_body:
+            body_pos = self.tracked_body.getPos(self.render)
+            self.trackball.node().setOrigin(body_pos)
+        return Task.cont
+
+    def setup_body_fixed_camera(self, body_node, view_distance):
+        """Setup camera to be in body-fixed reference frame."""
+        # Create a reference node attached to the body
+        if not hasattr(self, 'body_fixed_ref'):
+            self.body_fixed_ref = body_node.attachNewNode("body_fixed_ref")
+        else:
+            self.body_fixed_ref.reparentTo(body_node)
+
+        # Position the reference node at the desired viewing distance
+        self.body_fixed_ref.setPos(0, -view_distance, 0)  # Behind the body
+
+        # Parent the camera to this reference node
+        self.camera.reparentTo(self.body_fixed_ref)
+        self.camera.setPos(0, 0, 0)
+        self.camera.lookAt(body_node)
+
+    def focus_on_earth(self):
+        """Focus camera on Earth"""
+        if self.current_focus != "earth":
+            # Stop tracking task when returning to Earth
+            if hasattr(self, 'tracking_task') and self.tracking_task:
+                self.taskMgr.remove(self.tracking_task)
+                self.tracking_task = None
+
+            if self.original_camera_state:
+                self.restore_original_camera()
+            else:
+                self.focus_on_body(self.earth, "earth", 5.0)
+        else:
+            # If already on Earth, recenter to default view
+            self.recenter_on_earth()
+
+    def focus_on_moon(self):
+        """Focus camera on Moon"""
+        self.focus_on_body(self.moon, "moon", 4.0)
+
+    def focus_on_mars(self):
+        """Focus camera on Mars"""
+        self.focus_on_body(self.mars, "mars", 4.0)
+
+    def focus_on_venus(self):
+        """Focus camera on Venus"""
+        self.focus_on_body(self.venus._body, "venus", 6.0)
+
+    def focus_on_satellite(self):
+        """Focus camera on the orbiting satellite"""
+        self.focus_on_body(self.satellite, "satellite", 3.0)
+
+    def recenter_on_earth(self):
+        """Reset camera and trackball to look at Earth's center"""
+        # Stop tracking task
+        if hasattr(self, 'tracking_task') and self.tracking_task:
+            self.taskMgr.remove(self.tracking_task)
+            self.tracking_task = None
+
+        self.trackball.node().setHpr(0, 0, 0)
+        self.trackball.node().setPos(0, EARTH_RADIUS*10, 0)
+        self.trackball.node().setOrigin(Point3(0, 0, 0))
+        self.camera.setPos(0, -(EARTH_RADIUS*10), 0)
+        self.camera.lookAt(0, 0, 0)
+        self.current_focus = "earth"
+        self.original_camera_state = None  # Clear stored state
+        print("Camera recentered on Earth")
 
     def event_logger(self, *args, **kwargs):
         """Log all events for debugging"""
