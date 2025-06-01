@@ -1164,7 +1164,6 @@ class EarthOrbitApp(ShowBase):
 
         # Check if this is the first call (during initialization)
         if hasattr(self, 'initial_camera_parent'):
-            print('restore')
             # Regular restoration of state
             self.camera.reparentTo(self.initial_camera_parent)
             self.camera.setPos(self.render, self.initial_camera_pos)
@@ -1176,13 +1175,9 @@ class EarthOrbitApp(ShowBase):
             # self.trackball.node().resetMat()
             self.trackball.node().setMat(Mat4())  # Reset matrix to identity
 
-            # something still not rught.. it's at the center of the earth?
-
             self.camera.lookAt(0, 0, 0)
-            #self.camera.setPos(0, view_distance, 0)
 
         else:
-            print('first call')
             # First call - just use default setup
             self.trackball.node().setPos(0, view_distance, 0)
             self.trackball.node().setOrigin(Point3(0, 0, 0))
