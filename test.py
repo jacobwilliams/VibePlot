@@ -636,18 +636,13 @@ class EarthOrbitApp(ShowBase):
 
         self.accept("mouse1", self.stop_inertia)
 
-        self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
-        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
         # Add mouse handlers - use option key name for Mac compatibility
+        self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
         self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
+        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
         # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
-        self.accept("time-mouse1-up", self.on_alt_mouse_up) # Mac-specific
-        # self.accept("alt-up", self.on_alt_mouse_up) # Mac-specific
+        self.accept("time-mouse1-up", self.on_alt_mouse_up)
 
-        # self.accept("alt-mouse1", self.on_alt_mouse_down)     # Windows/Linux
-        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)    # Windows/Linux
-        # self.accept("shift-mouse1", self.on_alt_mouse_down)
-        # self.accept("shift-mouse1-up", self.on_alt_mouse_up)
         # Task for tracking mouse during drag
         self.mouse_task = None
 
