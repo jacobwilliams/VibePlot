@@ -49,6 +49,7 @@ MARS_RADIUS = EARTH_RADIUS / 3.0  # Radius of Mars in Panda3D units
 STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
 VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
+SUN_RADIUS = EARTH_RADIUS * 2
 
 constellations = {
     "orion": [
@@ -345,8 +346,6 @@ class Body:
 
     def create_body_fixed_axes(self):
         # 3D body-fixed axes for a body.
-        arrow_ambient = AmbientLight("arrow_ambient")
-        arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
         arrow_ambient_np = self.parent.render.attachNewNode(self.parent.arrow_ambient)
         axes_np = self._rotator.attachNewNode("axes")
         axes_np.setPos(0, 0, 0)
@@ -398,6 +397,9 @@ class Body:
         # Earth stays at the origin
         if self.name.lower() == "earth":
             return np.array([0.0, 0.0, 0.0])
+
+        elif self.name.lower() == "sun":
+            return np.array([0.0, -10.0, 0.0])
 
         # Moon orbits Earth
         elif self.name.lower() == "moon":
@@ -729,6 +731,16 @@ class EarthOrbitApp(ShowBase):
         # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
 
+        # Initialize tracking variables
+        self.tracked_body = None
+        self.tracked_distance = 0
+        self.tracking_task = None
+        # Task for tracking mouse during drag
+        self.mouse_task = None
+        # Task for inertial movement
+        self.inertia_task = None
+        self.mouse_dragged = False
+
         self.task_list = []  # list of (task, name) tuples
 
         # Set horizontal and vertical FOV in degrees
@@ -744,50 +756,6 @@ class EarthOrbitApp(ShowBase):
         if width > 0 and height > 0:
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
-
-        # ... this is what ai keeps trying to get me to do...
-        # self.camera.reparentTo(self.trackball)
-        # self.camera.setPos(0, 0, 0)
-        # self.camera.setHpr(0, 0, 0)
-        # self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
-        # self.trackball.node().setOrigin(Point3(0, 0, 0))
-        # self.trackball.node().setForwardScale(1.0)
-        # self.trackball.node().setRelTo(self.render)
-        # self.camera.lookAt(0, 0, 0)
-
-        # Why It Works
-        # In your implementation, the setup is:
-        #
-        # Independent Nodes: Both the camera and trackball are direct children of render (not parented to each other)
-        # Same Position: They are both positioned at the same coordinates
-        # Separate Control: The trackball serves as a reference for rotation behavior, but doesn't directly control the camera
-        # This approach works because:
-        #
-        # The MouseWatcher component in your app is configured to manipulate the camera directly
-        # The trackball node defines parameters like rotation origin and behavior
-        # When using this setup, pan/zoom/rotate work because both nodes maintain their specific roles
-
-        # #...original code... this works initially
-        # self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
-        # self.trackball.node().setOrigin(Point3(0, 0, 0))
-        # self.trackball.node().setForwardScale(1.0)
-        # self.trackball.node().setRelTo(self.render)
-        # self.camera.setPos(0, EARTH_RADIUS * 10, 0)
-        # self.camera.lookAt(0, 0, 0)
-
-        # #...try some permutations...
-        # self.trackball.node().setRelTo(self.render)
-        # self.trackball.node().setOrigin(Point3(0, 0, 0))
-        # self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
-        # self.trackball.node().setForwardScale(1.0)
-        # self.camera.reparentTo(self.trackball)
-        # self.camera.setPos(0, -EARTH_RADIUS * 10, 0)
-        # self.camera.setHpr(0, 0, 0)
-        # self.camera.lookAt(0, 0, 0)
-
-        # Initialize with proper camera setup
-        # earth_pos = Point3(0, 0, 0)
-        # self.setup_camera_view(earth_pos, EARTH_RADIUS * 10.0)
 
         # Initialize in base frame at startup
         self.setup_base_frame()
@@ -812,19 +780,19 @@ class EarthOrbitApp(ShowBase):
         self.accept("3", self.focus_on_mars)
         self.accept("4", self.focus_on_venus)
 
-        # Store original camera state for restoration
-        self.original_camera_state = None
-
-
         self.scene_anim_running = True
 
         # self.taskMgr.doMethodLater(2.0, self.debug_tasks, "DebugTasks")  # debugging
+        # messenger.toggleVerbose()  # Enable verbose messenger output
+        # self.accept("*", self.event_logger)  # debugging, log all events
 
         # inertia:
         self.last_mouse_pos = None
         self.angular_velocity = Vec3(0, 0, 0)
         self.inertia_active = False
         self.friction = min(abs(friction), 1.0) # Dampening factor for inertial rotation. should be between 0 [no inertial] and 1 [no friction]
+        self.inertia_axis = Vec3(0, 0, 1)  # Default axis
+        self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
 
         # Add mouse handlers
         # self.ignore("option-mouse1")
@@ -833,32 +801,13 @@ class EarthOrbitApp(ShowBase):
         # self.ignore("alt-mouse1-up")
         # self.ignore("shift-mouse1")
         # self.ignore("shift-mouse1-up")
-
-        # messenger.toggleVerbose()  # Enable verbose messenger output
-        # self.accept("*", self.event_logger)  # debugging, log all events
-
         self.accept("mouse1", self.stop_inertia)
-
         # Add mouse handlers - use option key name for Mac compatibility
         self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
         self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
         # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
         # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
         self.accept("time-mouse1-up", self.on_alt_mouse_up)
-
-
-        # Initialize tracking variables
-        self.tracked_body = None
-        self.tracked_distance = 0
-        self.tracking_task = None
-
-
-        # Task for tracking mouse during drag
-        self.mouse_task = None
-
-        # Task for inertial movement
-        self.inertia_task = None
-        self.mouse_dragged = False
 
         self.hud_text = OnscreenText(
             text="Frame: 0",
@@ -869,9 +818,6 @@ class EarthOrbitApp(ShowBase):
             mayChange=True
         )
         self.frame_count = 0
-
-        self.inertia_axis = Vec3(0, 0, 1)  # Default axis
-        self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
 
         self.star_sphere_np = self.render.attachNewNode("star_sphere")
 
@@ -991,6 +937,16 @@ class EarthOrbitApp(ShowBase):
             color=(1, 1, 1, 1),
             draw_3d_axes=True
         )
+
+        # self.sun = Body(
+        #             self,
+        #             name="Sun",
+        #             radius=SUN_RADIUS,
+        #             texture="models/2k_sun.jpg",
+        #             color=(1, 1, 0, 1),
+        #             draw_3d_axes=False
+        #         )
+        # self.sun._body.setLightOff()  # no shadowing on the sun!
 
         self.mars = Body(
             self,
@@ -1195,22 +1151,118 @@ class EarthOrbitApp(ShowBase):
         self.draw_axis_grid()
 
     def setup_base_frame(self):
-        """Set up camera in the base Earth-centered inertial frame."""
-        # DO NOT change the parent-child relationship between camera and trackball
-        # The default Panda3D setup has camera as a child of trackball
+        """Restore camera and trackball to their original working setup."""
 
-        # Reset trackball transform
-        self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+        view_distance = EARTH_RADIUS * 10
+
+        self.stop_inertia()
+
+        # Remove camera_pivot if it exists
+        if hasattr(self, 'camera_pivot'):
+            self.camera_pivot.removeNode()
+            del self.camera_pivot
+
+        # Check if this is the first call (during initialization)
+        if hasattr(self, 'initial_camera_parent'):
+            print('restore')
+            # Regular restoration of state
+            self.camera.reparentTo(self.initial_camera_parent)
+            self.camera.setPos(self.render, self.initial_camera_pos)
+            self.camera.setHpr(self.render, self.initial_camera_hpr)
+            #self.trackball.reparentTo(self.initial_trackball_parent)
+            self.trackball.setPos(self.render, self.initial_trackball_pos)
+            self.trackball.setHpr(self.render, self.initial_trackball_hpr)
+
+            # self.trackball.node().resetMat()
+            self.trackball.node().setMat(Mat4())  # Reset matrix to identity
+
+            # something still not rught.. it's at the center of the earth?
+
+            self.camera.lookAt(0, 0, 0)
+            #self.camera.setPos(0, view_distance, 0)
+
+        else:
+            print('first call')
+            # First call - just use default setup
+            self.trackball.node().setPos(0, view_distance, 0)
+            self.trackball.node().setOrigin(Point3(0, 0, 0))
+            self.trackball.node().setForwardScale(1.0)
+            self.trackball.node().setRelTo(self.render)
+            self.camera.setPos(0, view_distance, 0)
+
+            # Store the initial WORKING camera setup:
+            self.initial_camera_parent = self.camera.getParent()
+            self.initial_camera_pos = self.camera.getPos(self.render)
+            self.initial_camera_hpr = self.camera.getHpr(self.render)
+            self.initial_trackball_parent = self.trackball.getParent()
+            self.initial_trackball_pos = self.trackball.getPos(self.render)
+            self.initial_trackball_hpr = self.trackball.getHpr(self.render)
+
+            # print(f'{self.initial_camera_parent=}')
+            # print(f'{self.initial_camera_pos=}')
+            # print(f'{self.initial_camera_hpr=}')
+            # print(f'{self.initial_trackball_parent=}')
+            # print(f'{self.initial_trackball_pos=}')
+            # print(f'{self.initial_trackball_hpr=}')
+
+        # Restore trackball node settings
+        # print('restore')
+        # self.trackball.node().setPos(0, view_distance, 0)
+        # self.trackball.node().setOrigin(Point3(0, 0, 0))
+        # self.trackball.node().setForwardScale(1.0)
+        # self.trackball.node().setRelTo(self.render)
+        # # self.camera.setPos(0, view_distance, 0)  # why not this ??
+        # # self.camera.lookAt(0, 0, 0)
+
+        # print(f'  {self.camera.getParent()=}')
+        # print(f'  {self.camera.getPos(self.render)=}')
+        # print(f'  {self.camera.getHpr(self.render)=}')
+        # print(f'  {self.trackball.getParent()=}')
+        # print(f'  {self.trackball.getPos(self.render)=}')
+        # print(f'  {self.trackball.getHpr(self.render)=}')
+
+
+        self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.trackball.node().setForwardScale(1.0)
-        self.trackball.node().setRelTo(self.render)
-        self.trackball.node().setHpr(0, 0, 0)
-
-        # Camera should remain a child of trackball, reset its local position
-        self.camera.setPos(0, 0, 0)
-        self.camera.setHpr(0, 0, 0)
 
         self.current_focus = "base_frame"
+
+    # def setup_base_frame(self):
+    #     """Restore camera and trackball to their original working setup."""
+    #     self.stop_inertia()
+
+    #     # Remove camera_pivot if it exists
+    #     if hasattr(self, 'camera_pivot'):
+    #         self.camera_pivot.removeNode()
+    #         del self.camera_pivot
+
+    #     # Restore parents first (critical step for proper hierarchy)
+    #     self.camera.reparentTo(self.render)
+    #     self.trackball.reparentTo(self.render)
+
+    #     # ALWAYS set these values exactly as they were in the first call
+    #     self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
+    #     self.trackball.node().setOrigin(Point3(0, 0, 0))
+    #     self.trackball.node().setForwardScale(1.0)
+    #     self.trackball.node().setRelTo(self.render)
+    #     self.trackball.node().setMat(Mat4())  # Reset matrix to identity
+
+    #     # Position camera ALWAYS at the same distance
+    #     self.camera.setPos(0, EARTH_RADIUS * 10, 0)
+    #     self.camera.lookAt(0, 0, 0)  # Make sure camera looks at origin
+
+    #     # Only store initial values on first call
+    #     if not hasattr(self, 'initial_camera_parent'):
+    #         print('first call - storing initial values')
+    #         # Store the initial WORKING camera setup:
+    #         self.initial_camera_parent = self.camera.getParent()
+    #         self.initial_camera_pos = self.camera.getPos(self.render)
+    #         self.initial_camera_hpr = self.camera.getHpr(self.render)
+    #         self.initial_trackball_parent = self.trackball.getParent()
+    #         self.initial_trackball_pos = self.trackball.getPos(self.render)
+    #         self.initial_trackball_hpr = self.trackball.getHpr(self.render)
+
+    #     self.current_focus = "base_frame"
 
     def update_body_fixed_camera_task(self, task):
         """When in body-fixed mode, adjust the view parameters if needed."""
@@ -1218,46 +1270,75 @@ class EarthOrbitApp(ShowBase):
         # Just update view parameters if they change
         return Task.cont
 
+    # def setup_body_fixed_frame(self, body, view_distance=None):
+    #     """Set up camera in a body-fixed frame."""
+    #     if not view_distance:
+    #         view_distance = body.radius * 10.0
+
+    #     # The Scene Graph Hierarchy
+    #     #
+    #     # body._rotator
+    #     # └── camera_pivot (rotated 180°)
+    #     #     └── trackball (at 0, view_distance, 0)
+    #     #         └── camera (we need to position this correctly)
+
+    #     # Create a new node that will follow the body but maintain camera orientation
+    #     if not hasattr(self, 'camera_pivot'):
+    #         self.camera_pivot = self.render.attachNewNode("camera_pivot")
+
+    #     # Attach the camera pivot to the body's rotator
+    #     self.camera_pivot.reparentTo(body._rotator)
+
+    #     # Crucial fix: Rotate the pivot 180 degrees so cameras look TOWARD the body
+    #     self.camera_pivot.setHpr(180, 0, 0)
+
+    #     # Position the trackball relative to the pivot
+    #     self.trackball.reparentTo(self.camera_pivot)
+    #     self.trackball.node().setPos(0, view_distance, 0)
+    #     self.trackball.node().setOrigin(Point3(0, 0, 0))
+    #     self.trackball.node().setForwardScale(1.0)
+    #     self.trackball.node().setRelTo(self.camera_pivot)
+
+    #     # Position camera at same spot
+    #     self.camera.reparentTo(self.trackball)
+    #     self.camera.setPos(0, -view_distance, 0)
+    #     self.camera.lookAt(0, 0, 0)
+
+    #     self.current_focus = body.name.lower()
+
     def setup_body_fixed_frame(self, body, view_distance=None):
         """Set up camera in a body-fixed frame."""
         if not view_distance:
             view_distance = body.radius * 10.0
 
-        # The Scene Graph Hierarchy
-        #
-        # body._rotator
-        # └── camera_pivot (rotated 180°)
-        #     └── trackball (at 0, view_distance, 0)
-        #         └── camera (we need to position this correctly)
-
-        # Create a new node that will follow the body but maintain camera orientation
+        # Create a pivot that follows the body
         if not hasattr(self, 'camera_pivot'):
             self.camera_pivot = self.render.attachNewNode("camera_pivot")
 
-        # Attach the camera pivot to the body's rotator
-        self.camera_pivot.reparentTo(body._rotator)
+        self.stop_inertia()  # Stop any existing inertia
+        self.trackball.node().setMat(Mat4())  # Reset matrix to identity
 
-        # Crucial fix: Rotate the pivot 180 degrees so cameras look TOWARD the body
+        # Attach pivot to body
+        self.camera_pivot.reparentTo(body._rotator)
         self.camera_pivot.setHpr(180, 0, 0)
 
-        # Position the trackball relative to the pivot
-        self.trackball.reparentTo(self.camera_pivot)
+        # Parent camera directly to pivot (skip trackball)
+        self.camera.reparentTo(self.camera_pivot)
+        # Position camera AWAY from body center
+        self.camera.setPos(0, -view_distance, 0)
+        # Make camera look at the body center
+        self.camera.lookAt(0, 0, 0)
+
+        # update trackball also:
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
-        self.trackball.node().setForwardScale(1.0)
-        self.trackball.node().setRelTo(self.camera_pivot)
-
-        # Position camera at same spot
-        self.camera.reparentTo(self.trackball)
-        self.camera.setPos(0, -view_distance, 0)
-        self.camera.lookAt(0, 0, 0)
 
         self.current_focus = body.name.lower()
 
     def setup_camera_view(self, focus_point, view_distance):
         """Set up camera to look at a point while preserving mouse control."""
         # Always ensure consistent parenting
-        self.trackball.reparentTo(self.render)
+        #self.trackball.reparentTo(self.render)
         self.camera.reparentTo(self.render)
 
         # Calculate the position that's view_distance away from focus point
@@ -1273,24 +1354,8 @@ class EarthOrbitApp(ShowBase):
         self.camera.setPos(view_pos)
         self.camera.lookAt(*focus_point)
 
-    def store_current_camera_state(self):
-        """Store the current camera position and orientation"""
-        self.original_camera_state = {
-            'pos': self.trackball.node().getPos(),
-            'hpr': self.trackball.node().getHpr(),
-            'origin': self.trackball.node().getOrigin()
-        }
-
-    def restore_original_camera(self):
-        """Restore the camera to its stored state"""
-        if self.original_camera_state:
-            self.trackball.node().setPos(self.original_camera_state['pos'])
-            self.trackball.node().setHpr(self.original_camera_state['hpr'])
-            self.trackball.node().setOrigin(self.original_camera_state['origin'])
-
     def recenter_on_earth(self):
         """Reset to base render frame."""
-        self.stop_inertia()  # Stop any inertial rotation
         self.setup_base_frame()
 
     def focus_on_earth(self):
