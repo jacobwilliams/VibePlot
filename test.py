@@ -1146,9 +1146,9 @@ class EarthOrbitApp(ShowBase):
                 cam_quat = Quat()
                 cam_quat.setFromMatrix(mat.getUpper3())
 
-                # Get local axes
-                right = mat.xformVec(Vec3(1, 0, 0)).normalized()
-                up = mat.xformVec(Vec3(0, 0, 1)).normalized()
+                # FIXED: Get local axes directly from matrix rows
+                right = Vec3(mat.getCell(0, 0), mat.getCell(0, 1), mat.getCell(0, 2)).normalized()
+                up = Vec3(mat.getCell(2, 0), mat.getCell(2, 1), mat.getCell(2, 2)).normalized()
 
                 # Compose axis and angle for this frame
                 axis = (right * angle_pitch) + (up * angle_heading)
@@ -1167,14 +1167,11 @@ class EarthOrbitApp(ShowBase):
                 new_mat.setRow(3, self.trackball.node().getMat().getRow3(3))
                 self.trackball.node().setMat(new_mat)
 
-                # Calculate angular velocity for inertia - STORE THE ACTUAL AXIS AND ANGLE RATE
+                # Calculate angular velocity for inertia
                 dt = globalClock.getDt()
                 if dt > 0.001 and angle > 0:
-                    # Store the rotation axis and angular speed
-                    self.inertia_axis = axis  # The actual rotation axis used
-                    self.inertia_angular_speed = angle / dt  # Angular speed in radians/sec
-
-                    # Also store component velocities for compatibility
+                    self.inertia_axis = axis
+                    self.inertia_angular_speed = angle / dt
                     self.angular_velocity = Vec3(angle_pitch / dt, angle_heading / dt, 0)
 
             self.last_mouse_pos = Point2(current_pos.getX(), current_pos.getY())
