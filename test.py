@@ -258,7 +258,8 @@ class Body:
                  geojson_path : str = None, lon_rotate : str = 0.0,
                  draw_grid: bool = False, draw_3d_axes: bool = True,
                  orbit_markers: bool = False, marker_interval: int = 10,
-                 marker_size: float = 0.08, marker_color=(0, 1, 1, 1)):
+                 marker_size: float = 0.08, marker_color=(0, 1, 1, 1),
+                 show_label: bool = True):
 
         self.name = name
         self.radius = radius
@@ -324,6 +325,19 @@ class Body:
         if draw_3d_axes:
             # 3D axes for the body
             self.axis_np = self.create_body_fixed_axes()
+
+        # Add body label above the z-axis
+        if show_label:
+            label_node = TextNode(f"{self.name}_label")
+            label_node.setText(self.name)
+            label_node.setTextColor(1, 1, 1, 1)
+            label_node.setAlign(TextNode.ACenter)
+            label_np = self._body.attachNewNode(label_node)
+            label_np.setScale(0.4)
+            label_np.setPos(0, 0, self.radius * 2.3)  # Slightly above the axis
+            label_np.setBillboardPointEye()
+            label_np.setLightOff()
+            self.body_label_np = label_np  # Store reference if you want to hide/show later
 
         self.reparent_to_rotator()
 
@@ -679,7 +693,7 @@ class Body:
 
         return Task.cont
 
-    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1)):
+    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1), thickness=1.0):
         """Draws latitude and longitude grid lines on the body.
 
         Args:
@@ -691,8 +705,7 @@ class Body:
 
         # --- Latitude/Longitude grid ---
         grid = LineSegs()
-        grid.setThickness(1.0)
-        # grid.setColor(0.7, 0.7, 0.7, 0.5)  # Light gray, semi-transparent
+        grid.setThickness(thickness)
         grid.setColor(color)
         radius = self.radius + radius_pad
         # Latitude lines (horizontal circles)
@@ -724,11 +737,11 @@ class Body:
                     grid.drawTo(x, y, z)
 
         # the shader is effecting the grid lines, so do this:
-        # self.grid_np = self.parent.render.attachNewNode(grid.create())
         self.grid_np = self._body.attachNewNode(grid.create())
         self.grid_np.setShaderOff()
         self.grid_np.setLightOff()
         self.grid_np.setTwoSided(True)
+        # self.grid_np.setDepthOffset(2)
 
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
