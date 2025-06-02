@@ -757,6 +757,8 @@ class EarthOrbitApp(ShowBase):
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
 
+        self.star_sphere_np = self.render.attachNewNode("star_sphere")
+
         # Initialize in base frame at startup
         self.setup_base_frame()
         self.add_task(self.update_body_fixed_camera_task, "UpdateBodyFixedCamera")
@@ -818,8 +820,6 @@ class EarthOrbitApp(ShowBase):
             mayChange=True
         )
         self.frame_count = 0
-
-        self.star_sphere_np = self.render.attachNewNode("star_sphere")
 
         if USE_STAR_IMAGE:
             # Star background (sky sphere)
@@ -1216,48 +1216,11 @@ class EarthOrbitApp(ShowBase):
         # print(f'  {self.trackball.getPos(self.render)=}')
         # print(f'  {self.trackball.getHpr(self.render)=}')
 
-
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
-        self.current_focus = "base_frame"
-
-    # def setup_base_frame(self):
-    #     """Restore camera and trackball to their original working setup."""
-    #     self.stop_inertia()
-
-    #     # Remove camera_pivot if it exists
-    #     if hasattr(self, 'camera_pivot'):
-    #         self.camera_pivot.removeNode()
-    #         del self.camera_pivot
-
-    #     # Restore parents first (critical step for proper hierarchy)
-    #     self.camera.reparentTo(self.render)
-    #     self.trackball.reparentTo(self.render)
-
-    #     # ALWAYS set these values exactly as they were in the first call
-    #     self.trackball.node().setPos(0, EARTH_RADIUS * 10, 0)
-    #     self.trackball.node().setOrigin(Point3(0, 0, 0))
-    #     self.trackball.node().setForwardScale(1.0)
-    #     self.trackball.node().setRelTo(self.render)
-    #     self.trackball.node().setMat(Mat4())  # Reset matrix to identity
-
-    #     # Position camera ALWAYS at the same distance
-    #     self.camera.setPos(0, EARTH_RADIUS * 10, 0)
-    #     self.camera.lookAt(0, 0, 0)  # Make sure camera looks at origin
-
-    #     # Only store initial values on first call
-    #     if not hasattr(self, 'initial_camera_parent'):
-    #         print('first call - storing initial values')
-    #         # Store the initial WORKING camera setup:
-    #         self.initial_camera_parent = self.camera.getParent()
-    #         self.initial_camera_pos = self.camera.getPos(self.render)
-    #         self.initial_camera_hpr = self.camera.getHpr(self.render)
-    #         self.initial_trackball_parent = self.trackball.getParent()
-    #         self.initial_trackball_pos = self.trackball.getPos(self.render)
-    #         self.initial_trackball_hpr = self.trackball.getHpr(self.render)
-
-    #     self.current_focus = "base_frame"
+        # Change star sphere parent to render
+        self.star_sphere_np.reparentTo(self.render)
 
     def update_body_fixed_camera_task(self, task):
         """When in body-fixed mode, adjust the view parameters if needed."""
@@ -1265,44 +1228,16 @@ class EarthOrbitApp(ShowBase):
         # Just update view parameters if they change
         return Task.cont
 
-    # def setup_body_fixed_frame(self, body, view_distance=None):
-    #     """Set up camera in a body-fixed frame."""
-    #     if not view_distance:
-    #         view_distance = body.radius * 10.0
-
-    #     # The Scene Graph Hierarchy
-    #     #
-    #     # body._rotator
-    #     # └── camera_pivot (rotated 180°)
-    #     #     └── trackball (at 0, view_distance, 0)
-    #     #         └── camera (we need to position this correctly)
-
-    #     # Create a new node that will follow the body but maintain camera orientation
-    #     if not hasattr(self, 'camera_pivot'):
-    #         self.camera_pivot = self.render.attachNewNode("camera_pivot")
-
-    #     # Attach the camera pivot to the body's rotator
-    #     self.camera_pivot.reparentTo(body._rotator)
-
-    #     # Crucial fix: Rotate the pivot 180 degrees so cameras look TOWARD the body
-    #     self.camera_pivot.setHpr(180, 0, 0)
-
-    #     # Position the trackball relative to the pivot
-    #     self.trackball.reparentTo(self.camera_pivot)
-    #     self.trackball.node().setPos(0, view_distance, 0)
-    #     self.trackball.node().setOrigin(Point3(0, 0, 0))
-    #     self.trackball.node().setForwardScale(1.0)
-    #     self.trackball.node().setRelTo(self.camera_pivot)
-
-    #     # Position camera at same spot
-    #     self.camera.reparentTo(self.trackball)
-    #     self.camera.setPos(0, -view_distance, 0)
-    #     self.camera.lookAt(0, 0, 0)
-
-    #     self.current_focus = body.name.lower()
-
     def setup_body_fixed_frame(self, body, view_distance=None):
         """Set up camera in a body-fixed frame."""
+
+        # The Scene Graph Hierarchy
+        #
+        # body._rotator
+        # └── camera_pivot (rotated 180°)
+        #     └── trackball (at 0, view_distance, 0)
+        #         └── camera (we need to position this correctly)
+
         if not view_distance:
             view_distance = body.radius * 10.0
 
@@ -1328,8 +1263,6 @@ class EarthOrbitApp(ShowBase):
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
-        self.current_focus = body.name.lower()
-
     def setup_camera_view(self, focus_point, view_distance):
         """Set up camera to look at a point while preserving mouse control."""
         # Always ensure consistent parenting
@@ -1345,7 +1278,7 @@ class EarthOrbitApp(ShowBase):
         self.trackball.node().setForwardScale(1.0)
         self.trackball.node().setRelTo(self.render)
 
-        # Critical fix: Use the same position for camera as provided to trackball
+        # Use the same position for camera as provided to trackball
         self.camera.setPos(view_pos)
         self.camera.lookAt(*focus_point)
 
@@ -2483,8 +2416,8 @@ class EarthOrbitApp(ShowBase):
             constellation_np.setTransparency(True)
 
     def update_star_sphere(self, task):
-        """so the stars will rotate when you rotate the camera"""
-        self.star_sphere_np.setPos(self.camera.getPos())
+        # Always center the star sphere on the camera, in the star sphere's parent space
+        self.star_sphere_np.setPos(self.star_sphere_np.getParent(), self.camera.getPos(self.star_sphere_np.getParent()))
         return Task.cont
 
     def add_stars_as_points(self, filename : str = "models/Stars_HYGv3.txt", num_stars : int = 100):
