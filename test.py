@@ -1720,8 +1720,7 @@ class EarthOrbitApp(ShowBase):
         color_writer = GeomVertexWriter(vdata, 'color')
 
         rings = []
-        for i in range(len(points)):
-            p = points[i]
+        for i, p in enumerate(points):
             # Compute tangent
             if i == 0:
                 tangent = (points[i+1] - p).normalized()
