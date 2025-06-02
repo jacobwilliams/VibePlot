@@ -1388,7 +1388,7 @@ class EarthOrbitApp(ShowBase):
             self.mouse_task = None
 
         # Only start inertia if the mouse was dragged
-        if self.mouse_dragged and self.angular_velocity.length() > 0.01:
+        if self.mouse_dragged and self.angular_velocity.length() > 0.05:
             self.inertia_active = True
             self.inertia_task = self.taskMgr.add(self.apply_inertia_task, "InertiaTask")
         self.mouse_dragged = False  # Reset for next interaction
@@ -1531,7 +1531,7 @@ class EarthOrbitApp(ShowBase):
             else:
                 label.hide()
 
-    def draw_axis_grid(self, thickness=3.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
+    def draw_axis_grid(self, thickness=2.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
         """
         Draw coordinate axes with hash marks at specified intervals.
 
