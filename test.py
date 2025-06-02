@@ -1,17 +1,14 @@
 
+import os
 import sys
 import json
 import math
+import csv
 import random
-import psutil, os
+import psutil
 import imageio
 import numpy as np
 import datetime
-import csv
-
-from direct.gui.OnscreenText import OnscreenText
-from direct.particles.ParticleEffect import ParticleEffect
-from direct.gui.OnscreenImage import OnscreenImage
 
 # print('importing qt')
 # # these imports are crashing! ... something is wrong here...
@@ -25,14 +22,13 @@ from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
-                          GeomTriangles, NodePath, Vec3, Vec4, Mat4,
+                          GeomTriangles, NodePath, Vec3, Mat4,
                           Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
                           loadPrcFileData, LineSegs, TextNode,
-                          GeomVertexRewriter, GeomLinestrips,
                           CardMaker, TransparencyAttrib,
-                          WindowProperties, TransparencyAttrib,
-                          Shader, Mat3, BitMask32, GeomPoints,
-                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, AntialiasAttrib, RenderModeAttrib, GeomVertexArrayFormat,OrthographicLens
+                          WindowProperties,
+                          Shader, Mat3, GeomPoints,
+                          Quat, AntialiasAttrib, GeomVertexArrayFormat
                           )
 from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, DirectFrame
 
@@ -43,6 +39,7 @@ loadPrcFileData('', 'window-title VibePlot')
 # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
 loadPrcFileData('', 'gl-include-points-size true')
 
+STAR_SPHERE_RADIUS = 100  # Radius of the star sphere in Panda3D units
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
 MOON_RADIUS = EARTH_RADIUS / 4.0  # Radius of Moon in Panda3D units
 MARS_RADIUS = EARTH_RADIUS / 3.0  # Radius of Mars in Panda3D units
@@ -807,7 +804,6 @@ class EarthOrbitApp(ShowBase):
 
         self.scene_anim_running = True
 
-        # self.taskMgr.doMethodLater(2.0, self.debug_tasks, "DebugTasks")  # debugging
         # messenger.toggleVerbose()  # Enable verbose messenger output
         # self.accept("*", self.event_logger)  # debugging, log all events
 
@@ -864,23 +860,13 @@ class EarthOrbitApp(ShowBase):
 
         # self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
         self.add_stars("models/hygdata_v41.csv", num_stars=500)
-        # self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
+        #self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
         self.draw_constellations()
-        self.draw_sky_grid(sphere_radius=100)
+        self.draw_sky_grid(sphere_radius=STAR_SPHERE_RADIUS)
 
         self.add_task(self.update_star_sphere, "UpdateStarSphere")
 
         # Lighting
-        # ambient = AmbientLight("ambient")
-        # ambient.setColor((0.02, 0.02, 0.02, 1))
-        # self.render.setLight(self.render.attachNewNode(ambient))
-
-        # dlight = DirectionalLight("dlight")
-        # dlight.setColor((1, 1, 1, 1))
-        # dlnp = self.render.attachNewNode(dlight)
-        # dlnp.setHpr(0, -60, 0)
-        # # dlnp.setHpr(0, 60, 60)
-        # self.render.setLight(dlnp)
 
         # Sunlight (directional)
         dlight = DirectionalLight("dlight")
@@ -936,9 +922,6 @@ class EarthOrbitApp(ShowBase):
             site_marker.setTextureOff(1)  #
             site_marker.setTransparency(True)
         self.site_lines_np = None
-
-        #self.draw_country_boundaries("models/custom.geo.json", radius=EARTH_RADIUS + 0.001, lon_rotate = 180.0)
-        # rotate because the texturemap is rotated...
 
         # just a test:
         #self.add_radiation_belt(inner_radius=EARTH_RADIUS*1.5, outer_radius=EARTH_RADIUS*2.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24)
@@ -1272,29 +1255,6 @@ class EarthOrbitApp(ShowBase):
             self.initial_trackball_pos = self.trackball.getPos(self.render)
             self.initial_trackball_hpr = self.trackball.getHpr(self.render)
 
-            # print(f'{self.initial_camera_parent=}')
-            # print(f'{self.initial_camera_pos=}')
-            # print(f'{self.initial_camera_hpr=}')
-            # print(f'{self.initial_trackball_parent=}')
-            # print(f'{self.initial_trackball_pos=}')
-            # print(f'{self.initial_trackball_hpr=}')
-
-        # Restore trackball node settings
-        # print('restore')
-        # self.trackball.node().setPos(0, view_distance, 0)
-        # self.trackball.node().setOrigin(Point3(0, 0, 0))
-        # self.trackball.node().setForwardScale(1.0)
-        # self.trackball.node().setRelTo(self.render)
-        # # self.camera.setPos(0, view_distance, 0)  # why not this ??
-        # # self.camera.lookAt(0, 0, 0)
-
-        # print(f'  {self.camera.getParent()=}')
-        # print(f'  {self.camera.getPos(self.render)=}')
-        # print(f'  {self.camera.getHpr(self.render)=}')
-        # print(f'  {self.trackball.getParent()=}')
-        # print(f'  {self.trackball.getPos(self.render)=}')
-        # print(f'  {self.trackball.getHpr(self.render)=}')
-
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
@@ -1516,12 +1476,6 @@ class EarthOrbitApp(ShowBase):
             return Task.done
 
         return Task.cont
-
-    def debug_tasks(self, task):
-        print(f"Active tasks: {[t.getName() for t in self.taskMgr.getTasks()]}")
-        print(f"Moon position: {self.moon.getPos()}")
-        print(f"Mars position: {self.mars.getPos()}")
-        return Task.again
 
     def toggle_particle_labels(self):
         self.labels_visible = not self.labels_visible
@@ -1936,18 +1890,6 @@ class EarthOrbitApp(ShowBase):
 
         return Task.cont
 
-    def hyperbolic_orbit_task(self, task):
-        # Move along the hyperbolic path with focus at Earth's center
-        t_range = self.hyperbolic_t_max - self.hyperbolic_t_min
-        t = self.hyperbolic_t_min + (task.time * self.hyperbolic_speed) % t_range
-        x = self.hyperbolic_a * math.cosh(t) - self.hyperbolic_c  # Shift so focus is at x=0
-        y = self.hyperbolic_b * math.sinh(t)
-        z = 0
-        y_incl = y * math.cos(self.hyperbolic_incl) - z * math.sin(self.hyperbolic_incl)
-        z_incl = y * math.sin(self.hyperbolic_incl) + z * math.cos(self.hyperbolic_incl)
-        self.hyper_sat.setPos(x, y_incl, z_incl)
-        return Task.cont
-
     def particles_orbit_task(self, task):
         self.frame_count += 1
         # self.hud_text.setText(f"Frame: {self.frame_count}")
@@ -2092,6 +2034,7 @@ class EarthOrbitApp(ShowBase):
         return Task.cont
 
     def add_orbit_tube(self, radius=3.0, inclination_deg=20, tube_radius=0.07, num_segments=100, num_sides=12, eccentricity=0.0):
+
         inclination = math.radians(inclination_deg)
         a = radius
         e = eccentricity
@@ -2163,141 +2106,6 @@ class EarthOrbitApp(ShowBase):
         tube_np.setTwoSided(True)
         tube_np.setBin('opaque', 10)
         return tube_np
-
-    def moon_orbit_task(self, task):
-
-        #...fixed axis:
-        # angle = task.time * self.moon_orbit_speed
-        # x = self.moon_orbit_radius * math.cos(angle)
-        # y = self.moon_orbit_radius * math.sin(angle)
-        # z = 0
-        # self.moon.setPos(x, y, z)
-        # self.moon.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
-
-        angle = task.time * self.moon_orbit_speed
-        x = self.moon_orbit_radius * math.cos(angle)
-        y = self.moon_orbit_radius * math.sin(angle)
-        z = 0
-        self.moon.setPos(x, y, z)
-
-        # Set orientation for tidal locking (always same face to Earth)
-        # self.moon.setH(math.degrees(angle))
-
-        # add some rotation:
-        self.moon_rotation += self.moon_rotation_speed
-        self.moon.setH(math.degrees(angle) + self.moon_rotation)
-
-        # Apply axis tilt
-        self.moon.setP(self.moon_axis_tilt)
-
-        # Apply rotation around its own axis
-        rotation_angle = task.time * self.moon_rotation_speed
-
-        # Create a separate node for the moon's own rotation
-        if not hasattr(self, 'moon_rotator'):
-            self.moon_rotator = self.moon.attachNewNode("moon_rotator")
-            # Reparent the moon's children to this node
-            for child in self.moon.getChildren():
-                if child.getName() != "moon_rotator":
-                    child.reparentTo(self.moon_rotator)
-
-        # Rotate the moon around its own axis
-        self.moon_rotator.setR(rotation_angle)
-
-
-        # Update moon trace
-        moon_pos = self.moon.getPos(self.render)
-        self.moon_trace.append(moon_pos)
-        if len(self.moon_trace) > self.moon_trace_length:
-            self.moon_trace.pop(0)
-        # Draw the trace
-        self.moon_trace_node.node().removeAllChildren()
-        segs = LineSegs()
-        segs.setThickness(3.0)
-        for i, pt in enumerate(self.moon_trace):
-            alpha = i / len(self.moon_trace)
-            segs.setColor(0.7, 0.7, 1, alpha)
-            if i == 0:
-                segs.moveTo(pt)
-            else:
-                segs.drawTo(pt)
-        self.moon_trace_node.attachNewNode(segs.create())
-        self.moon_trace_node.setTransparency(True)
-
-        return Task.cont
-
-    def mars_orbit_task(self, task):
-
-        angle = task.time * self.mars_orbit_speed
-        x = self.mars_orbit_radius * math.cos(angle)
-        y = self.mars_orbit_radius * math.sin(angle)
-        z = 0
-        self.mars.setPos(x, y, z)
-        self.mars.setHpr(math.degrees(angle), 0, 0)  # Rotates X axis toward Earth
-
-        # Update mars trace
-        mars_pos = self.mars.getPos(self.render)
-        self.mars_trace.append(mars_pos)
-        if len(self.mars_trace) > self.mars_trace_length:
-            self.mars_trace.pop(0)
-        # Draw the trace
-        self.mars_trace_node.node().removeAllChildren()
-        segs = LineSegs()
-        segs.setThickness(3.0)
-        for i, pt in enumerate(self.mars_trace):
-            alpha = i / len(self.mars_trace)
-            segs.setColor(1.0, 0.1, 0, alpha)
-            if i == 0:
-                segs.moveTo(pt)
-            else:
-                segs.drawTo(pt)
-        self.mars_trace_node.attachNewNode(segs.create())
-        self.mars_trace_node.setTransparency(True)
-
-        # # Draw the moon's orbit as a translucent manifold
-        # if self.manifold_np:
-        #     self.manifold_np.removeNode()
-        # self.manifold_np = self.draw_translucent_manifold(self.moon_trace, tube_radius=0.3, color=(1.0, 0.8, 1, 0.18))
-
-        # moon_orbit = LineSegs()
-        # moon_orbit.setThickness(1.2)
-        # moon_orbit.setColor(0.7, 0.7, 1, 0.7)
-        # segments = 100
-        # for i in range(segments + 1):
-        #     angle = 2 * math.pi * i / segments
-        #     x = self.moon_orbit_radius * math.cos(angle)
-        #     y = self.moon_orbit_radius * math.sin(angle)
-        #     z = 0
-        #     if i == 0:
-        #         moon_orbit.moveTo(x, y, z)
-        #     else:
-        #         moon_orbit.drawTo(x, y, z)
-        # moon_orbit_np = self.render.attachNewNode(moon_orbit.create())
-
-        # # Update sun direction in Moon's local space
-        # sun_dir_world = self.dlnp.getQuat(self.render).getForward()
-        # sun_dir_local = self.moon.getQuat(self.render).conjugate().xform(sun_dir_world)
-        # self.moon.setShaderInput("sundir", sun_dir_local)
-
-        # Update the Earth-to-Moon arrow
-        # moon_pos = self.moon.getPos(self.render)
-        # # Remove old geometry
-        # self.earth_to_moon_arrow.removeNode()
-        # # Create a new arrow with updated end point
-        # self.earth_to_moon_arrow = create_arrow(
-        #     start=Vec3(0, 0, 0),
-        #     end=moon_pos,
-        #     shaft_radius=0.05,
-        #     head_length=0.4,
-        #     head_radius=0.18,
-        #     color=(1, 1, 1, 0.5)
-        # )
-        # self.earth_to_moon_arrow.reparentTo(self.render)
-        # self.earth_to_moon_arrow.setLightOff()
-        # self.earth_to_moon_arrow.setLight(self.dlnp)
-        # self.earth_to_moon_arrow.setLight(self.render.find("**/arrow_ambient"))
-
-        return Task.cont
 
     def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
         """Draw a translucent torus (belt) around the Earth."""
@@ -2444,7 +2252,6 @@ class EarthOrbitApp(ShowBase):
         stars = stars[:num_stars]
 
         # Place each star on a celestial sphere of large radius
-        STAR_SPHERE_RADIUS = 100
         self.star_positions = {}
         for star in stars:
             ra = star['ra'] * 15  # convert hours to degrees
@@ -2543,7 +2350,6 @@ class EarthOrbitApp(ShowBase):
         stars = sorted(stars, key=lambda s: s['mag'])[:num_stars]
 
         # --- Write star data ---
-        STAR_SPHERE_RADIUS = 1000
         for star in stars:
             ra = star['ra'] * 15
             dec = star['dec']
