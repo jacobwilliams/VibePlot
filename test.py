@@ -1955,8 +1955,7 @@ class EarthOrbitApp(ShowBase):
         fps = globalClock.getAverageFrameRate()
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         cpu = self.process.cpu_percent()
-        text_to_display = [f"{now}",
-                           f"FPS: {fps:.1f}",
+        text_to_display = [f"FPS: {fps:.1f}",   # f"{now}",
                            f"Frame: {self.frame_count}",
                            f"Mem: {mem_mb:.1f} MB",
                            f"CPU: {cpu:.1f}%"]
