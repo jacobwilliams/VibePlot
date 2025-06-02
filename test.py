@@ -32,8 +32,9 @@ from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Ge
                           CardMaker, TransparencyAttrib,
                           WindowProperties, TransparencyAttrib,
                           Shader, Mat3, BitMask32, GeomPoints,
-                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, AntialiasAttrib, RenderModeAttrib, GeomVertexArrayFormat
+                          Quat, CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue, AntialiasAttrib, RenderModeAttrib, GeomVertexArrayFormat,OrthographicLens
                           )
+from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, DirectFrame
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -50,6 +51,7 @@ STARMAP_IMAGE = 'models/2k_stars.jpg'
 USE_STAR_IMAGE = False
 VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 SUN_RADIUS = EARTH_RADIUS * 2
+MIN_LABEL_SCALE = 0  #0.05
 
 constellations = {
     "orion": [
@@ -555,7 +557,9 @@ class Body:
         self.boundaries_np.setTransparency(True)
 
     def orbit_task(self, task):
+
         et = task.time
+        #et = self.parent.sim_time if self.parent.use_slider_time else task.time
 
         self.set_orientation(et)
         r = self.get_position_vector(et)
@@ -727,9 +731,15 @@ class Body:
         self.grid_np.setTwoSided(True)
 
 class EarthOrbitApp(ShowBase):
+    """A simple Panda3D application to visualize Earth and other celestial bodies."""
+
     def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = False):
-        # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
         super().__init__()
+
+        self.use_slider_time = False
+        self.sim_time = 0.0  # This will be your time variable
+
+        self.setup_gui()
 
         # Initialize tracking variables
         self.tracked_body = None
@@ -1044,8 +1054,7 @@ class EarthOrbitApp(ShowBase):
 
         self.groundtrack_trace = []
         self.groundtrack_length = 1000  # Number of points to keep in the groundtrack
-        #self.groundtrack_node = self.earth.attachNewNode("groundtrack")
-        self.groundtrack_node = self.render.attachNewNode("groundtrack")
+        self.groundtrack_node = self.earth._rotator.attachNewNode("groundtrack")
         self.groundtrack_node.setShaderOff()
         self.groundtrack_node.setLightOff()
         self.groundtrack_node.setTwoSided(True)
@@ -1101,16 +1110,29 @@ class EarthOrbitApp(ShowBase):
             self.particles.append(particle)
             self.particle_params.append((r, inclination, angle0, speed))
 
-            label = OnscreenText(
-                text=f"S{idx+1}",
-                pos=(0, 0),  # Will be updated each frame
-                scale=0.05,
-                fg=(0, 0, 0, 1),
-                bg=(1, 1, 1, 0.5),
-                mayChange=True,
-                align=TextNode.ACenter
-            )
-            self.particle_labels.append(label)
+            label = TextNode(f"S{idx+1}_label")
+            label.setText(f"S{idx+1}")
+            label.setTextColor(1, 1, 1, 1)
+            label.setAlign(TextNode.ACenter)
+            label_np = self.render.attachNewNode(label)
+            particle_pos = particle.getPos()
+            label_np.setPos(particle_pos[0] + 0.1, particle_pos[1] + 0.1, particle_pos[2] + 0.1)  # Offset above particle
+            label_np.setScale(0.2)
+            label_np.setBillboardPointEye()  # Always face camera
+            label_np.setLightOff()
+            self.particle_labels.append(label_np)
+
+            # .. old version with OnscreenText:
+            # label = OnscreenText(
+            #     text=f"S{idx+1}",
+            #     pos=(0, 0),  # Will be updated each frame
+            #     scale=0.05,
+            #     fg=(0, 0, 0, 1),
+            #     bg=(1, 1, 1, 0.5),
+            #     mayChange=True,
+            #     align=TextNode.ACenter
+            # )
+            # self.particle_labels.append(label)
 
         self.labels_visible = True
         self.accept("s", self.toggle_particle_labels)
@@ -1149,6 +1171,50 @@ class EarthOrbitApp(ShowBase):
         self.accept("r", self.toggle_movie_recording)
 
         self.draw_axis_grid()
+
+    def on_slider_change(self):
+        self.sim_time = float(self.time_slider['value'])
+        self.use_slider_time = True  # Enter manual time mode
+        self.time_label["text"] = f"Time: {self.sim_time:.2f}"
+
+    def setup_gui(self):
+        """Add some GUI elements for interaction."""
+
+        aspect = self.getAspectRatio()
+
+        self.gui_frame = DirectFrame(
+            frameColor=(0, 0, 0, 0.4),
+            frameSize=(-aspect, aspect, -0.15, 0.15),  # full width, adjust height as needed
+            pos=(0, 0, 0.85),  # Centered at top of window
+        )
+
+        # GUI elements:
+        self.my_button = DirectButton(
+            text="Reset",
+            scale=0.07,
+            pos=(1.0, 0, 0),  # Left side of the frame
+            command=self.recenter_on_earth,
+            parent=self.gui_frame
+        )
+
+        self.time_slider = DirectSlider(
+            range=(0, 100),  # Set min/max time as needed
+            value=self.sim_time,
+            pageSize=1,      # How much to move per click
+            scale=0.6,
+            pos=(0, 0, 0),  # Center of the frame
+            command=self.on_slider_change,
+            parent=self.gui_frame
+        )
+
+        self.time_label = DirectLabel(
+            text="Time",
+            scale=0.07,
+            pos=(0.7, 0, 0),  # Right side of the frame
+            text_fg=(1, 1, 1, 1),  # White text
+            text_bg=(0, 0, 0, 1),
+            parent=self.gui_frame
+        )
 
     def setup_base_frame(self):
         """Restore camera and trackball to their original working setup."""
@@ -1914,20 +1980,33 @@ class EarthOrbitApp(ShowBase):
             pos_3d = particle.getPos(self.render)
             pos_cam = self.camera.getRelativePoint(self.render, pos_3d)
             p3 = Point3()
+            label_np = self.particle_labels[i]
             if self.labels_visible and self.camLens.project(pos_cam, p3):
                 x = p3.x * base.getAspectRatio()
                 y = p3.y
-                self.particle_labels[i].setPos(x, y + 0.04)
-                self.particle_labels[i].show()
+                label_np.setPos(pos_3d[0] + 0.01, pos_3d[1] + 0.01, pos_3d[2] + 0.01)
+                label_np.show()
             else:
-                self.particle_labels[i].hide()
+                label_np.hide()
             # Update label color for connected particles
             if i < self.connect_count:
-                self.particle_labels[i]['fg'] = (1, 0, 0, 1)  # Red for connected
-                self.particle_labels[i]['bg'] = (0, 0, 0, 0.5)
+                # ... old version with onscreentext:
+                #label_np['fg'] = (1, 0, 0, 1)  # Red for connected
+                #label_np['bg'] = (0, 0, 0, 0.5)
+                label_np.node().setTextColor(1, 0, 0, 1)  # Red for connected
             else:
-                self.particle_labels[i]['fg'] = (0, 0, 0, 1)  # Black for others
-                self.particle_labels[i]['bg'] = (1, 1, 1, 0.5)
+                #label_np['fg'] = (0, 0, 0, 1)  # Black for others
+                #label_np['bg'] = (1, 1, 1, 0.5)
+                label_np.node().setTextColor(1, 1, 1, 1)  # White for others
+
+            if MIN_LABEL_SCALE:
+                # Calculate distance from camera to label
+                label_pos = label_np.getPos(self.render)
+                cam_pos = self.camera.getPos(self.render)
+                distance = (label_pos - cam_pos).length()
+                # Optionally, set a base scale that grows with distance, but clamp to a minimum
+                scale = max(MIN_LABEL_SCALE, 0.15 * (distance / 7.0))  # Adjust 0.2 and 10.0 as needed
+                label_np.setScale(scale)
 
         # hide the ones that intersect the earth:
         self.particle_lines = LineSegs()
