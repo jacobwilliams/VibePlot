@@ -201,7 +201,7 @@ class EarthOrbitApp(ShowBase):
         # neutral_ambient.setColor((0.3, 0.3, 0.4, 1))
         # neutral_ambient.setColor((0.5, 0.5, 0.6, 1))  # Brighter, cooler
         # neutral_ambient.setColor((0.85, 0.85, 0.85, 1))  # Brighter, cooler
-        neutral_ambient.setColor((0.2, 0.2, 0.2, 1))  # Dimmer, more neutral
+        neutral_ambient.setColor((0.3, 0.3, 0.4, 1))  # Increase from 0.2 to 0.3
         neutral_ambient_np = self.render.attachNewNode(neutral_ambient)
         self.render.setLight(neutral_ambient_np)
 
@@ -395,6 +395,7 @@ class EarthOrbitApp(ShowBase):
             self.orbit_segs.drawTo(x, y_incl, z_incl)
         self.orbit_np = NodePath(self.orbit_segs.create())
         self.orbit_np.reparentTo(self.render)
+        self.orbit_np.setLightOff()  # Turn off lighting completely
 
         self.add_task(self.orbit_task, "OrbitTask")
 
@@ -467,6 +468,7 @@ class EarthOrbitApp(ShowBase):
                 self.particle_lines.drawTo(pos_j)
         self.lines_np = NodePath(self.particle_lines.create())
         self.lines_np.reparentTo(self.render)
+        self.lines_np.setLightOff()  # Turn off lighting completely
 
         # Trace settings
         self.trace_length = 100  # Number of points in the trace
@@ -1153,7 +1155,7 @@ class EarthOrbitApp(ShowBase):
         node.addGeom(geom)
         cone_np = self.visibility_cone_np.attachNewNode(node)
         cone_np.setTransparency(True)
-
+        cone_np.setLightOff()  # Turn off lighting completely
 
         # Draw the intersection outline
         if hasattr(self, "cone_outline_np"):
@@ -1171,7 +1173,7 @@ class EarthOrbitApp(ShowBase):
             outline.drawTo(base_points[0])
         self.cone_outline_np = self.render.attachNewNode(outline.create())
         self.cone_outline_np.setTransparency(True)
-
+        self.cone_outline_np.setLightOff()  # Turn off lighting completely
 
         # Project satellite position onto Earth's surface
         sat_vec = sat_pos - Point3(0, 0, 0)
@@ -1198,6 +1200,7 @@ class EarthOrbitApp(ShowBase):
                     segs.drawTo(pt)
             self.groundtrack_node.attachNewNode(segs.create())
             self.groundtrack_node.setTransparency(True)
+            self.groundtrack_node.setLightOff()  # Turn off lighting completely
 
         if self.record_movie and self.movie_writer:
             tex = self.win.getScreenshot()
@@ -1248,6 +1251,7 @@ class EarthOrbitApp(ShowBase):
                 segs.drawTo(trace[j])
             self.trace_nodes[i] = self.render.attachNewNode(segs.create())
             self.trace_nodes[i].setTransparency(True)
+            self.trace_nodes[i].setLightOff()
 
             pos_3d = particle.getPos(self.render)
             pos_cam = self.camera.getRelativePoint(self.render, pos_3d)
@@ -1296,6 +1300,7 @@ class EarthOrbitApp(ShowBase):
         self.lines_np.removeNode()
         self.lines_np = NodePath(self.particle_lines.create())
         self.lines_np.reparentTo(self.render)
+        self.lines_np.setLightOff()  # Turn off lighting completely
 
         # lines that connect to a site:
         # Remove previous site lines
@@ -1317,6 +1322,7 @@ class EarthOrbitApp(ShowBase):
 
         self.site_lines_np = self.render.attachNewNode(site_lines.create())
         self.site_lines_np.setTransparency(True)
+        self.site_lines_np.setLightOff()  # Add this line
 
         return Task.cont
 

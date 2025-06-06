@@ -485,6 +485,8 @@ class Body:
             # Create the trace line
             self._trace_node.attachNewNode(segs.create())
             self._trace_node.setTransparency(True)
+            self._trace_node.setLightOff()  # Add this line to disable lighting
+            self._trace_node.setTwoSided(True)  # Also add this for better visibility
 
         return Task.cont
 
