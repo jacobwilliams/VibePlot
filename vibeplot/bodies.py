@@ -32,7 +32,8 @@ class Body:
                  draw_grid: bool = False, draw_3d_axes: bool = True,
                  orbit_markers: bool = False, marker_interval: int = 10,
                  marker_size: float = 0.08, marker_color=(0, 1, 1, 1),
-                 show_label: bool = True):
+                 show_label: bool = True,
+                 material: Material = None):
 
         self.name = name
         self.radius = radius
@@ -96,11 +97,12 @@ class Body:
         # self._body.setTag("shadow", "receiver")
 
         # myMaterial = Material()
-        # myMaterial.setShininess(5.0)  # Increase from 5.0 to make it much shinier
-        # myMaterial.setSpecular((0.2, 0.2, 0.2, 1))  # Add specular highlight color (white)
+        # myMaterial.setShininess(100.0)  # Increase from 5.0 to make it much shinier
+        # myMaterial.setSpecular((1, 1, 1, 1))  # Add specular highlight color (white)
         # myMaterial.setAmbient((0.2, 0.2, 0.2, 1))  # Reduce ambient from blue to gray
         # myMaterial.setDiffuse((0.8, 0.8, 0.8, 1))  # Set diffuse color
-        # self._body.setMaterial(myMaterial)  # Apply the material!
+        if material is not None:
+            self._body.setMaterial(material)  # Apply the material!
 
         if geojson_path:
             self.draw_country_boundaries(geojson_path=geojson_path, lon_rotate=lon_rotate)
