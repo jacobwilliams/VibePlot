@@ -10,7 +10,8 @@ class Orbit:
                  satellite_radius: float = 0.1, satellite_color=(1, 0, 0, 1),
                  visibility_cone: bool = True, cone_angle_deg: float = 5.0,
                  groundtrack: bool = True, groundtrack_length: int = 1000,
-                 show_orbit_path: bool = True, num_segments: int = 100):
+                 show_orbit_path: bool = True, num_segments: int = 100,
+                 enable_shadow: bool = False):
 
         self.parent = parent
         self.central_body = central_body  # Store the central body
@@ -23,6 +24,7 @@ class Orbit:
         self.satellite_radius = satellite_radius
         self.satellite_color = satellite_color
         self.num_segments = num_segments
+        self.enable_shadow = enable_shadow
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -68,7 +70,9 @@ class Orbit:
             color=self.satellite_color
         )
         satellite.reparentTo(self.parent.render)
-        satellite.setLightOff()  # Disable lighting for visibility
+
+        if not self.enable_shadow:
+            satellite.setLightOff()  # Disable lighting for visibility
         return satellite
 
     def get_orbit_state(self, angle: float):

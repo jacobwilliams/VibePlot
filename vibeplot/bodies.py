@@ -237,7 +237,7 @@ class Body:
         # Moon orbits Earth
         elif self.name.lower() == "moon":
             # Use the same parameters as before
-            moon_orbit_radius = EARTH_RADIUS * 3  # Distance from Earth center
+            moon_orbit_radius = EARTH_RADIUS * 5  # Distance from Earth center
             moon_orbit_speed = 0.7  # radians per second
             angle = et * moon_orbit_speed
             x = moon_orbit_radius * math.cos(angle)
@@ -247,7 +247,7 @@ class Body:
 
         # Mars orbits Earth (for demo)
         elif self.name.lower() == "mars":
-            mars_orbit_radius = EARTH_RADIUS * 4
+            mars_orbit_radius = EARTH_RADIUS * 6
             mars_orbit_speed = 0.5  # radians per second
             angle = et * mars_orbit_speed
             x = mars_orbit_radius * math.cos(angle)
@@ -257,7 +257,7 @@ class Body:
 
         # Venus (example, you can adjust as needed)
         elif self.name.lower() == "venus":
-            venus_orbit_radius = EARTH_RADIUS * 2.5
+            venus_orbit_radius = EARTH_RADIUS * 7
             angle = et * 0.3  # example speed
             x = venus_orbit_radius * math.cos(angle)
             y = venus_orbit_radius * math.sin(angle)

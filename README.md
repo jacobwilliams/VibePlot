@@ -17,6 +17,11 @@ Keys:
  * space -- recenter the camera view
  * 'r' -- start/stop `.mp4` movie capture
  * 's' -- toggle display of the labels
+ * '1' -- focus on Earth
+ * '2' -- focus on Moon
+ * '3' -- focus on Mars
+ * '4' -- focus on Venus
+ * '5' -- focus on Site
 
 ### See also
 

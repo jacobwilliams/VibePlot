@@ -247,7 +247,7 @@ class EarthOrbitApp(ShowBase):
             groundtrack=True
         )
 
-        self.iss = Orbit(
+        self.equatorial_satellite = Orbit(
             parent=self,
             central_body=self.earth,
             name="equatorial_satellite",
@@ -264,7 +264,6 @@ class EarthOrbitApp(ShowBase):
         site_lat = 0.519 * RAD2DEG   # deg
         site_lon = 1.665 * RAD2DEG  # radians
         self.site = Site(parent=self, name = 'site', central_body=self.earth, lat_deg=site_lat, lon_deg=site_lon, radius_offset=0.001, radius=0.01, color=(1,0,0,0.5))  #, show_axes=False, axes_length=0.2, label=None, label_color=(1,1,1,1))
-
         self.site_lines_np = None
 
         # just a test:
@@ -319,7 +318,7 @@ class EarthOrbitApp(ShowBase):
                  marker_interval=5,
                  marker_color=(1, 1, 1, 0.5))
 
-        venus_site = Site(parent=self, name='venus_site', central_body=self.venus, lat_deg=40, radius = 0.01, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
+        venus_site = Site(parent=self, name='P1', central_body=self.venus, lat_deg=40, radius = 0.01, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
 
         self.venus_orbiter = Orbit(
             parent=self,
@@ -360,6 +359,24 @@ class EarthOrbitApp(ShowBase):
                 label_scale=0.1,  # Adjust label size
                 draw_3d_axes=False  # Disable axes for simplicity
             )
+
+
+        self.moon_satellite_2 = Orbit(
+            parent=self,
+            central_body=self.moon,
+            name="moon_satellite",
+            radius=MOON_RADIUS * 2.0,
+            satellite_radius = 0.03,
+            thickness=2,
+            speed=2.0,
+            inclination_deg=10.0,
+            color=(1, 1, 0, 1),
+            satellite_color=(1, 1, 0, 1),
+            visibility_cone=False,
+            groundtrack=False,
+            enable_shadow=False
+        )
+
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
