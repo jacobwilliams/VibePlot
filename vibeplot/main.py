@@ -17,6 +17,7 @@ from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, Direct
 from .stars import constellations
 from .utilities import *
 from .bodies import Body
+from .orbit import Orbit
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
@@ -67,6 +68,7 @@ class EarthOrbitApp(ShowBase):
         # Task for inertial movement
         self.inertia_task = None
         self.mouse_dragged = False
+        self.last_mouse_move_time = 0
 
         self.task_list = []  # list of (task, name) tuples
 
@@ -224,6 +226,32 @@ class EarthOrbitApp(ShowBase):
             draw_3d_axes=True
         )
 
+        self.iss = Orbit(
+            parent=self,
+            central_body=self.earth,
+            name="ISS",
+            radius=EARTH_RADIUS * 1.3,
+            speed=3.0,
+            inclination_deg=51.6,  # ISS inclination
+            color=(1, 0, 0, 1),
+            satellite_color=(0.8, 0.8, 1, 1),
+            visibility_cone=True,
+            groundtrack=True
+        )
+
+        self.iss = Orbit(
+            parent=self,
+            central_body=self.earth,
+            name="equatorial_satellite",
+            radius=EARTH_RADIUS * 5.0,
+            speed=1.0,
+            inclination_deg=1.0,
+            color=(0, 1, 0, 1),
+            satellite_color=(0, 1, 0, 1),
+            visibility_cone=True,
+            groundtrack=True
+        )
+
         # put a site on the Earth:
         site_lat = 0.519   # radians
         site_lon = 1.665  # radians
@@ -293,6 +321,20 @@ class EarthOrbitApp(ShowBase):
                  marker_size=0.06,
                  marker_interval=5,
                  marker_color=(1, 1, 1, 0.5))
+
+        self.venus_orbiter = Orbit(
+            parent=self,
+            central_body=self.venus,
+            name="venus_orbiter",
+            radius=VENUS_RADIUS * 1.5,
+            satellite_radius=0.02,
+            speed=3.0,
+            inclination_deg=90,
+            color=(1, 1, 1, 1),
+            satellite_color=(1, 1, 1, 1),
+            visibility_cone=True,
+            groundtrack=True
+        )
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -663,16 +705,25 @@ class EarthOrbitApp(ShowBase):
         print(f"EVENT: {args}, {kwargs}")
 
     def on_alt_mouse_up(self, *args):
-        """Stop tracking mouse and apply inertia if moving fast enough"""
         if self.mouse_task:
             self.taskMgr.remove(self.mouse_task)
             self.mouse_task = None
 
-        # Only start inertia if the mouse was dragged
-        if self.mouse_dragged and self.angular_velocity.length() > 0.05:
+        now = globalClock.getFrameTime()
+        time_since_move = now - getattr(self, "last_mouse_move_time", 0)
+
+        # Only start inertia if the mouse was dragged, moving recently, and velocity is high enough
+        if (
+            self.mouse_dragged
+            and self.angular_velocity.length() > 0.5
+            and time_since_move < 0.12  # 120 ms, adjust as needed
+        ):
             self.inertia_active = True
             self.inertia_task = self.taskMgr.add(self.apply_inertia_task, "InertiaTask")
-        self.mouse_dragged = False  # Reset for next interaction
+        else:
+            self.inertia_active = False
+
+        self.mouse_dragged = False
 
     def stop_inertia(self, *args):
         self.inertia_active = False
@@ -717,6 +768,7 @@ class EarthOrbitApp(ShowBase):
                 # If the mouse moved more than a small threshold, consider it a drag
                 if abs(delta_x) > 0.002 or abs(delta_y) > 0.002:
                     self.mouse_dragged = True
+                    self.last_mouse_move_time = globalClock.getFrameTime()
 
                 # Sensitivity
                 angle_heading = delta_x * 30      # Horizontal drag = heading (around up)
