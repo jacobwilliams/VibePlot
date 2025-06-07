@@ -21,18 +21,29 @@ class Body:
     #     ├── Grid
     #     └── Other visuals
 
-    def __init__(self, parent : ShowBase, name: str, radius : float,
+    def __init__(self,
+                 parent : ShowBase,
+                 name: str,
+                 radius : float,
                  get_position_vector = None,
                  get_rotation_matrix = None,
                  color=(1, 1, 1, 1),
                  texture : str = None,
-                 day_tex : str = None, night_tex : str = None, sun_dir = LVector3(0, 0, 1),
+                 day_tex : str = None,
+                 night_tex : str = None,
+                 sun_dir = LVector3(0, 0, 1),
                  trace_length: int = 200,
-                 geojson_path : str = None, lon_rotate : str = 0.0,
-                 draw_grid: bool = False, draw_3d_axes: bool = True,
-                 orbit_markers: bool = False, marker_interval: int = 10,
-                 marker_size: float = 0.08, marker_color=(0, 1, 1, 1),
+                 trace_color=(0.7, 0.7, 1, 1),
+                 geojson_path : str = None,
+                 lon_rotate : str = 0.0,
+                 draw_grid: bool = False,
+                 draw_3d_axes: bool = True,
+                 orbit_markers: bool = False,
+                 marker_interval: int = 10,
+                 marker_size: float = 0.08,
+                 marker_color=(0, 1, 1, 1),
                  show_label: bool = True,
+                 label_scale: float = 0.4,
                  material: Material = None):
 
         self.name = name
@@ -43,6 +54,8 @@ class Body:
             self.get_position_vector = get_position_vector
         if get_rotation_matrix is not None:
             self.get_rotation_matrix = get_rotation_matrix
+        self.label_scale = label_scale
+        self.trace_color = trace_color
 
         self.orbit_markers_np = None
         self.orbit_markers = orbit_markers
@@ -66,9 +79,12 @@ class Body:
         self._body.setLight(self.parent.dlnp)
 
         if texture is not None:
+
             tex = parent.loader.loadTexture(texture)
             self._body.setTexture(tex, 1)
+
         elif day_tex is not None and night_tex is not None:
+
             # Load and apply Earth texture
             day_tex = parent.loader.loadTexture(day_tex)
             night_tex = parent.loader.loadTexture(night_tex)
@@ -80,10 +96,10 @@ class Body:
             self._body.setShaderInput("night", night_tex)
             # Set the sun direction uniform (should match your light direction)
             self._body.setShaderInput("sundir", sun_dir)
-
             self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
 
         else:
+
             # no texture, just a color
             self._body.setColor(*color)
             # Only enable automatic shaders for non-textured bodies
@@ -128,13 +144,18 @@ class Body:
             label_node.setTextColor(1, 1, 1, 1)
             label_node.setAlign(TextNode.ACenter)
             label_np = self._body.attachNewNode(label_node)
-            label_np.setScale(0.4)
-            label_np.setPos(0, 0, self.radius * 2.3)  # Slightly above the axis
+            label_np.setScale(self.label_scale)
+            label_np.setPos(0, 0, self.radius * 2.3 + 0.01)  # Slightly above the axis
             label_np.setBillboardPointEye()
             label_np.setLightOff()
             self.body_label_np = label_np  # Store reference if you want to hide/show later
 
         self.reparent_to_rotator()
+
+        #...test...
+        # self._body.setLightOff()
+        # self._body.setTextureOff(1)  # <--- This disables texture inheritance
+        # self._body.setTransparency(True)
 
     def update_earth_shader_sundir_task(self, task):
         self.update_shader_sundir(self.parent.dlnp)
@@ -179,6 +200,7 @@ class Body:
         return axes_np
 
     def reparent_to_rotator(self):
+
         # Reparent the body's children to the rotator node
         for child in self._body.getChildren():
             if child.getName() != f"{self.name}_rotator":
@@ -370,123 +392,127 @@ class Body:
         et = task.time
         #et = self.parent.sim_time if self.parent.use_slider_time else task.time
 
-        self.set_orientation(et)
-        r = self.get_position_vector(et)
+        # Skip updates for sites    ---- this needs to be moved somewhere else....
+        if self.__class__.__name__ != 'Site':
+            # don't update the rotator if it's a site
+            self.set_orientation(et)
+            r = self.get_position_vector(et)
+            # Get the new position
+            new_pos = Point3(r[0], r[1], r[2])
+            self._rotator.setPos(new_pos)
 
-        # Get the new position
-        new_pos = Point3(r[0], r[1], r[2])
-        self._rotator.setPos(new_pos)
+        if self.trace_length:
+            # Update body trace
+            body_pos = self._body.getPos(self.parent.render)
+            self._trace.append(body_pos)
 
-        # Update body trace
-        body_pos = self._body.getPos(self.parent.render)
-        self._trace.append(body_pos)
+            # Trim trace if needed
+            if self.trace_length and len(self._trace) > self.trace_length:
+                self._trace.pop(0)
 
-        # Trim trace if needed
-        if self.trace_length and len(self._trace) > self.trace_length:
-            self._trace.pop(0)
+            # Draw the trace and markers
+            self._trace_node.node().removeAllChildren()
 
-        # Draw the trace and markers
-        self._trace_node.node().removeAllChildren()
+            # Clear existing markers
+            if hasattr(self, 'marker_nodes'):
+                for marker in self.marker_nodes:
+                    marker.removeNode()
+                self.marker_nodes = []
 
-        # Clear existing markers
-        if hasattr(self, 'marker_nodes'):
-            for marker in self.marker_nodes:
-                marker.removeNode()
-            self.marker_nodes = []
+            # Clear existing marker labels
+            if hasattr(self, 'marker_labels'):
+                for label in self.marker_labels:
+                    label.removeNode()
+            self.marker_labels = []
 
-        # Clear existing marker labels
-        if hasattr(self, 'marker_labels'):
-            for label in self.marker_labels:
-                label.removeNode()
-        self.marker_labels = []
+            # Create marker parent if needed
+            if self.orbit_markers_np is None:
+                self.orbit_markers_np = self.parent.render.attachNewNode(f"{self.name}_orbit_markers")
+            else:
+                self.orbit_markers_np.node().removeAllChildren()
 
-        # Create marker parent if needed
-        if self.orbit_markers_np is None:
-            self.orbit_markers_np = self.parent.render.attachNewNode(f"{self.name}_orbit_markers")
-        else:
-            self.orbit_markers_np.node().removeAllChildren()
+            # Draw trace and add markers
+            if len(self._trace) > 1:
+                segs = LineSegs()
+                segs.setThickness(3.0)
 
-        # Draw trace and add markers
-        if len(self._trace) > 1:
-            segs = LineSegs()
-            segs.setThickness(3.0)
+                # Decide how many markers to create
+                marker_interval = max(1, len(self._trace) // (self.trace_length // self.marker_interval))
 
-            # Decide how many markers to create
-            marker_interval = max(1, len(self._trace) // (self.trace_length // self.marker_interval))
+                marker_count = 0  # For numbering markers
 
-            marker_count = 0  # For numbering markers
+                for i, pt in enumerate(self._trace):
+                    # Alpha increases from oldest to newest point
+                    alpha = i / (len(self._trace) - 1)
 
-            for i, pt in enumerate(self._trace):
-                # Alpha increases from oldest to newest point
-                alpha = i / (len(self._trace) - 1)
+                    # Set color for trace segment
+                    color = (self.trace_color[0], self.trace_color[1], self.trace_color[2], alpha)
+                    segs.setColor(color)
 
-                # Set color for trace segment
-                segs.setColor(0.7, 0.7, 1, alpha)
+                    # Start or continue line
+                    if i == 0:
+                        segs.moveTo(pt)
+                    else:
+                        segs.drawTo(pt)
 
-                # Start or continue line
-                if i == 0:
-                    segs.moveTo(pt)
-                else:
-                    segs.drawTo(pt)
+                    # Add marker at regular intervals
+                    if self.orbit_markers and i % marker_interval == 0:
+                        marker_count += 1
 
-                # Add marker at regular intervals
-                if self.orbit_markers and i % marker_interval == 0:
-                    marker_count += 1
+                        marker_color = (
+                            self.marker_color[0],
+                            self.marker_color[1],
+                            self.marker_color[2],
+                            self.marker_color[3] * alpha
+                        )
 
-                    marker_color = (
-                        self.marker_color[0],
-                        self.marker_color[1],
-                        self.marker_color[2],
-                        self.marker_color[3] * alpha
-                    )
+                        marker = create_sphere(
+                            radius=self.marker_size,
+                            num_lat=8,
+                            num_lon=16,
+                            color=marker_color
+                        )
+                        marker.reparentTo(self.orbit_markers_np)
+                        marker.setPos(pt)
+                        marker.setLightOff()
+                        marker.setTransparency(True)
+                        self.marker_nodes.append(marker)
 
-                    marker = create_sphere(
-                        radius=self.marker_size,
-                        num_lat=8,
-                        num_lon=16,
-                        color=marker_color
-                    )
-                    marker.reparentTo(self.orbit_markers_np)
-                    marker.setPos(pt)
-                    marker.setLightOff()
-                    marker.setTransparency(True)
-                    self.marker_nodes.append(marker)
+                        # Create numbered label for this marker
+                        label_text = TextNode(f'marker_label_{marker_count}')
+                        label_text.setText(f"{marker_count}")
+                        label_text.setTextColor(
+                            self.marker_color[0],
+                            self.marker_color[1],
+                            self.marker_color[2],
+                            self.marker_color[3] * alpha  # Same opacity as marker
+                        )
+                        label_text.setAlign(TextNode.ACenter)
+                        label_np = self.orbit_markers_np.attachNewNode(label_text)
 
-                    # Create numbered label for this marker
-                    label_text = TextNode(f'marker_label_{marker_count}')
-                    label_text.setText(f"{marker_count}")
-                    label_text.setTextColor(
-                        self.marker_color[0],
-                        self.marker_color[1],
-                        self.marker_color[2],
-                        self.marker_color[3] * alpha  # Same opacity as marker
-                    )
-                    label_text.setAlign(TextNode.ACenter)
-                    label_np = self.orbit_markers_np.attachNewNode(label_text)
+                        # Position the label next to the marker
+                        label_offset = self.marker_size * 2.5
+                        label_np.setPos(pt[0], pt[1], pt[2] + label_offset)
 
-                    # Position the label next to the marker
-                    label_offset = self.marker_size * 2.5
-                    label_np.setPos(pt[0], pt[1], pt[2] + label_offset)
+                        # Scale the label appropriately
+                        label_np.setScale(0.2)
 
-                    # Scale the label appropriately
-                    label_np.setScale(0.2)
+                        # Make the label always face the camera
+                        label_np.setBillboardPointEye()
 
-                    # Make the label always face the camera
-                    label_np.setBillboardPointEye()
+                        # Apply same properties as marker
+                        label_np.setLightOff()
+                        label_np.setTransparency(True)
 
-                    # Apply same properties as marker
-                    label_np.setLightOff()
-                    label_np.setTransparency(True)
-
-                    # Store for cleanup
-                    self.marker_labels.append(label_np)
+                        # Store for cleanup
+                        self.marker_labels.append(label_np)
 
 
-            # Create the trace line
-            self._trace_node.attachNewNode(segs.create())
-            self._trace_node.setTransparency(True)
-            self._trace_node.setLightOff()  # Add this line to disable lighting
-            self._trace_node.setTwoSided(True)  # Also add this for better visibility
+                # Create the trace line
+                self._trace_node.attachNewNode(segs.create())
+                self._trace_node.setTransparency(True)
+                self._trace_node.setLightOff()  # Add this line to disable lighting
+                self._trace_node.setTwoSided(True)  # Also add this for better visibility
 
         return Task.cont
 

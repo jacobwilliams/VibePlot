@@ -18,6 +18,7 @@ from .stars import constellations
 from .utilities import *
 from .bodies import Body
 from .orbit import Orbit
+from .sites import Site
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
@@ -46,7 +47,7 @@ USE_STAR_IMAGE = False
 VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 SUN_RADIUS = EARTH_RADIUS * 2
 MIN_LABEL_SCALE = 0  #0.05
-
+RAD2DEG = 180.0 / math.pi
 
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
@@ -69,6 +70,8 @@ class EarthOrbitApp(ShowBase):
         self.inertia_task = None
         self.mouse_dragged = False
         self.last_mouse_move_time = 0
+        self.prev_quat = None
+        self.curr_quat = None
 
         self.task_list = []  # list of (task, name) tuples
 
@@ -92,6 +95,9 @@ class EarthOrbitApp(ShowBase):
         self.setup_base_frame()
         self.add_task(self.update_body_fixed_camera_task, "UpdateBodyFixedCamera")
 
+        # Set up custom zoom controls
+        #self.setup_zoom_controls()
+
         if parent_window is not None:
             props = WindowProperties()
             props.setParentWindow(parent_window)
@@ -110,11 +116,13 @@ class EarthOrbitApp(ShowBase):
         self.accept("2", self.focus_on_moon)
         self.accept("3", self.focus_on_mars)
         self.accept("4", self.focus_on_venus)
+        self.accept("5", self.focus_on_site)
 
         self.scene_anim_running = True
 
         # messenger.toggleVerbose()  # Enable verbose messenger output
         # self.accept("*", self.event_logger)  # debugging, log all events
+        # messenger.toggleVerbose()
 
         # inertia:
         self.last_mouse_pos = None
@@ -253,21 +261,10 @@ class EarthOrbitApp(ShowBase):
         )
 
         # put a site on the Earth:
-        site_lat = 0.519   # radians
-        site_lon = 1.665  # radians
-        earth_radius = EARTH_RADIUS + 0.001
-        site_x = earth_radius * math.cos(site_lat) * math.cos(site_lon)
-        site_y = earth_radius * math.cos(site_lat) * math.sin(site_lon)
-        site_z = earth_radius * math.sin(site_lat)
-        self.site_np = self.earth._body.attachNewNode("site")
-        self.site_np.setPos(self.earth._body, site_x, site_y, site_z)
-        if True:
-            # Optional: add a small sphere to mark the site
-            site_marker = create_sphere(radius=0.02, num_lat=24, num_lon=48, color=(1,0,0,0.5))
-            site_marker.reparentTo(self.site_np)
-            site_marker.setShaderOff(1)   # so it won't have the earth texture
-            site_marker.setTextureOff(1)  #
-            site_marker.setTransparency(True)
+        site_lat = 0.519 * RAD2DEG   # deg
+        site_lon = 1.665 * RAD2DEG  # radians
+        self.site = Site(parent=self, name = 'site', central_body=self.earth, lat_deg=site_lat, lon_deg=site_lon, radius_offset=0.001, radius=0.01, color=(1,0,0,0.5))  #, show_axes=False, axes_length=0.2, label=None, label_color=(1,1,1,1))
+
         self.site_lines_np = None
 
         # just a test:
@@ -322,6 +319,8 @@ class EarthOrbitApp(ShowBase):
                  marker_interval=5,
                  marker_color=(1, 1, 1, 0.5))
 
+        venus_site = Site(parent=self, name='venus_site', central_body=self.venus, lat_deg=40, radius = 0.01, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
+
         self.venus_orbiter = Orbit(
             parent=self,
             central_body=self.venus,
@@ -335,6 +334,32 @@ class EarthOrbitApp(ShowBase):
             visibility_cone=True,
             groundtrack=True
         )
+
+        self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=40, lon_deg=-105, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
+
+        # Add Apollo landing sites to the Moon
+        apollo_sites = [
+            {"name": "Apollo 11", "lat_deg": 0.67408, "lon_deg": 23.47297},
+            {"name": "Apollo 12", "lat_deg": -3.01239, "lon_deg": -23.42157},
+            {"name": "Apollo 14", "lat_deg": -3.64530, "lon_deg": -17.47136},
+            {"name": "Apollo 15", "lat_deg": 26.13222, "lon_deg": 3.63386},
+            {"name": "Apollo 16", "lat_deg": -8.97301, "lon_deg": 15.50019},
+            {"name": "Apollo 17", "lat_deg": 20.19080, "lon_deg": 30.77168},
+        ]
+
+        for site in apollo_sites:
+            apollo_site = Site(
+                parent=self,
+                name=site["name"],
+                central_body=self.moon,
+                radius=0.005,  # Adjust the size of the site marker
+                lat_deg=site["lat_deg"],
+                lon_deg=site["lon_deg"],
+                trace_length=0,
+                color=(1, 0, 0, 1),  # Red color for visibility
+                label_scale=0.1,  # Adjust label size
+                draw_3d_axes=False  # Disable axes for simplicity
+            )
 
         # --- Add a satellite orbiting the Moon ---
         self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
@@ -575,6 +600,100 @@ class EarthOrbitApp(ShowBase):
             parent=self.gui_frame
         )
 
+    # def setup_zoom_controls(self):
+    #     """Monitor zoom changes and apply minimum distance limits."""
+    #     # DISABLE the trackball's built-in zoom
+    #     # self.trackball.node().setForwardScale(0.0)  # This prevents trackball zoom
+
+    #     # Set up custom zoom controls - Mac trackpad events
+    #     self.accept("mouse-wheel-up", self.zoom_in_custom)
+    #     self.accept("mouse-wheel-down", self.zoom_out_custom)
+
+    #     # Also try these alternatives
+    #     self.accept("wheelUp", self.zoom_in_custom)
+    #     self.accept("wheelDown", self.zoom_out_custom)
+
+    #     # Two-finger scroll on trackpad
+    #     self.accept("scroll-up", self.zoom_in_custom)
+    #     self.accept("scroll-down", self.zoom_out_custom)
+
+    #     # Pinch gesture (might work)
+    #     self.accept("zoom-in", self.zoom_in_custom)
+    #     self.accept("zoom-out", self.zoom_out_custom)
+
+    #     # Keyboard controls as backup
+    #     self.accept("=", self.zoom_in_custom)   # Plus/equals key
+    #     self.accept("-", self.zoom_out_custom)  # Minus key
+    #     self.accept("page_up", self.zoom_in_custom)
+    #     self.accept("page_down", self.zoom_out_custom)
+
+    #     self.last_camera_distance = self.trackball.node().getPos().length()
+    #     self.add_task(self.monitor_zoom_task, "MonitorZoom")
+
+    # def zoom_in_custom(self):
+    #     """Custom zoom in with collision detection."""
+    #     zoom_factor = 0.95  # 5% closer
+    #     current_distance = self.trackball.node().getPos().length()
+    #     new_distance = current_distance * zoom_factor
+
+    #     # Apply minimum distance constraint
+    #     min_distance = self.get_minimum_distance()
+    #     new_distance = max(new_distance, min_distance)
+
+    #     # Apply the zoom
+    #     current_pos = self.trackball.node().getPos()
+    #     direction = current_pos.normalized()
+    #     self.trackball.node().setPos(direction * new_distance)
+
+    # def zoom_out_custom(self):
+    #     """Custom zoom out."""
+    #     zoom_factor = 1.05  # 5% further
+    #     current_distance = self.trackball.node().getPos().length()
+    #     new_distance = current_distance * zoom_factor
+
+    #     # Apply the zoom
+    #     current_pos = self.trackball.node().getPos()
+    #     direction = current_pos.normalized()
+    #     self.trackball.node().setPos(direction * new_distance)
+
+    # def get_minimum_distance(self):
+    #     """Get the minimum distance based on what we're focused on."""
+    #     min_distance = 0.1  # Default minimum distance from origin
+
+    #     # Adjust minimum distance based on what we're focused on
+    #     if hasattr(self, 'camera_pivot') and self.camera_pivot.getParent():
+    #         parent_name = self.camera_pivot.getParent().getName()
+    #         if 'site' in parent_name.lower():
+    #             min_distance = 0.05  # Very close for sites
+    #         elif 'earth' in parent_name.lower():
+    #             min_distance = EARTH_RADIUS * 0.1  # Close to Earth surface
+    #         elif 'moon' in parent_name.lower():
+    #             min_distance = MOON_RADIUS * 0.1  # Close to Moon surface
+    #         else:
+    #             min_distance = 0.05  # Default for other bodies
+
+    #     return min_distance
+
+    # def monitor_zoom_task(self, task):
+    #     """Monitor camera distance and prevent zooming past the target origin."""
+    #     current_distance = self.trackball.node().getPos().length()
+
+    #     # Check if distance changed (zoom occurred from somewhere else)
+    #     if abs(current_distance - self.last_camera_distance) > 0.001:
+    #         min_distance = self.get_minimum_distance()
+
+    #         # Prevent camera from getting too close to target origin
+    #         if current_distance < min_distance:
+    #             # Move camera back to minimum distance
+    #             current_pos = self.trackball.node().getPos()
+    #             direction = current_pos.normalized()
+    #             self.trackball.node().setPos(direction * min_distance)
+    #             print(f"Zoom blocked - minimum distance from origin: {min_distance:.3f}")
+
+    #         self.last_camera_distance = self.trackball.node().getPos().length()
+
+    #     return Task.cont
+
     def setup_base_frame(self):
         """Restore camera and trackball to their original working setup."""
 
@@ -700,14 +819,28 @@ class EarthOrbitApp(ShowBase):
     def focus_on_venus(self):
         self.venus.setup_body_fixed_camera()
 
+    def focus_on_site(self):
+        min_safe_distance = EARTH_RADIUS * 1.2  # 20% beyond Earth's radius
+        self.site.setup_body_fixed_camera(view_distance=min_safe_distance)
+
     def event_logger(self, *args, **kwargs):
         """Log all events for debugging"""
         print(f"EVENT: {args}, {kwargs}")
 
     def on_alt_mouse_up(self, *args):
+
         if self.mouse_task:
             self.taskMgr.remove(self.mouse_task)
             self.mouse_task = None
+
+        if self.prev_quat and self.curr_quat:
+            # Compute the delta rotation between the last two frames
+            delta_quat = self.curr_quat * self.prev_quat.conjugate()
+            axis = delta_quat.getAxis()
+            angle = delta_quat.getAngle()
+            if angle > 0:
+                self.inertia_axis = axis.normalized()
+                self.inertia_angular_speed = angle / globalClock.getDt()
 
         now = globalClock.getFrameTime()
         time_since_move = now - getattr(self, "last_mouse_move_time", 0)
@@ -798,6 +931,11 @@ class EarthOrbitApp(ShowBase):
                 new_mat = Mat4(rot_mat3)
                 new_mat.setRow(3, self.trackball.node().getMat().getRow3(3))
                 self.trackball.node().setMat(new_mat)
+
+                # Now update prev_quat and curr_quat
+                self.prev_quat = getattr(self, 'curr_quat', None)
+                self.curr_quat = Quat()
+                self.curr_quat.setFromMatrix(new_mat.getUpper3())
 
                 # Calculate angular velocity for inertia
                 dt = globalClock.getDt()
@@ -1362,7 +1500,7 @@ class EarthOrbitApp(ShowBase):
         site_lines = LineSegs()
         site_lines.setThickness(2.0)
         site_lines.setColor(0, 1, 0, 1)  # Green
-        site_pos = self.site_np.getPos(self.render)
+        site_pos = self.site._body.getPos(self.render)
         earth_center = Point3(0, 0, 0)
         earth_radius = EARTH_RADIUS
         for particle in self.particles:
