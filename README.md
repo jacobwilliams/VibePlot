@@ -17,11 +17,16 @@ Keys:
  * space -- recenter the camera view
  * 'r' -- start/stop `.mp4` movie capture
  * 's' -- toggle display of the labels
- * '1' -- focus on Earth
- * '2' -- focus on Moon
- * '3' -- focus on Mars
- * '4' -- focus on Venus
- * '5' -- focus on Site
+ * '1' -- center on Earth-fixed frame
+ * '2' -- center on Moon-fixed frame
+ * '3' -- center on Mars-fixed frame
+ * '4' -- center on Venus-fixed frame
+ * '5' -- center on Site-fixed frame
+ * 'shift-1' -- center on Earth, in the base frame
+ * 'shift-2' -- center on Moon, in the base frame
+ * 'shift-3' -- center on Mars, in the base frame
+ * 'shift-4' -- center on Venus, in the base frame
+ * 'shift-5' -- center on Site, in the base frame
 
 ### See also
 

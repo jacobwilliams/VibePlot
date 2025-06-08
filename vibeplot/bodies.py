@@ -10,16 +10,22 @@ from .utilities import create_sphere, lonlat_to_xyz, create_body_fixed_arrow
 EARTH_RADIUS = 1.0  # Default radius for Earth-like bodies, can be adjusted
 
 class Body:
+    """A class representing a celestial body.
 
-    # notes:
-    # * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
+    ### Heirarchy
 
-    # Body (self._body)
-    # └── Rotator (self._rotator)
-    #     ├── Sphere geometry (with texture)
-    #     ├── Axes
-    #     ├── Grid
-    #     └── Other visuals
+    ```
+    Body (self._body)
+    └── Rotator (self._rotator)
+        ├── Sphere geometry (with texture)
+        ├── Axes
+        ├── Grid
+        └── Other visuals
+    ```
+
+    ### Notes
+        * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
+    """
 
     def __init__(self,
                  parent : ShowBase,
@@ -45,6 +51,33 @@ class Body:
                  show_label: bool = True,
                  label_scale: float = 0.4,
                  material: Material = None):
+        """Initializes a celestial body with various visual and physical properties.
+
+        Args:
+            parent (ShowBase): The parent ShowBase instance.
+            name (str): The name of the body.
+            radius (float): The radius of the body.
+            get_position_vector (Callable, optional): Function to calculate the body's position vector. Defaults to None.
+            get_rotation_matrix (Callable, optional): Function to calculate the body's rotation matrix. Defaults to None.
+            color (tuple, optional): RGBA color of the body. Defaults to (1, 1, 1, 1).
+            texture (str, optional): Path to the texture file. Defaults to None.
+            day_tex (str, optional): Path to the day texture file. Defaults to None.
+            night_tex (str, optional): Path to the night texture file. Defaults to None.
+            sun_dir (LVector3, optional): Direction of the sun for lighting. Defaults to (0, 0, 1).
+            trace_length (int, optional): Length of the trace path. Defaults to 200.
+            trace_color (tuple, optional): RGBA color of the trace. Defaults to (0.7, 0.7, 1, 1).
+            geojson_path (str, optional): Path to the GeoJSON file for country boundaries. Defaults to None.
+            lon_rotate (float, optional): Longitude rotation offset. Defaults to 0.0.
+            draw_grid (bool, optional): Whether to draw latitude and longitude grid lines. Defaults to False.
+            draw_3d_axes (bool, optional): Whether to draw 3D axes. Defaults to True.
+            orbit_markers (bool, optional): Whether to draw orbit markers. Defaults to False.
+            marker_interval (int, optional): Interval for placing orbit markers. Defaults to 10.
+            marker_size (float, optional): Size of orbit markers. Defaults to 0.08.
+            marker_color (tuple, optional): RGBA color of orbit markers. Defaults to (0, 1, 1, 1).
+            show_label (bool, optional): Whether to show the body's label. Defaults to True.
+            label_scale (float, optional): Scale of the label. Defaults to 0.4.
+            material (Material, optional): Material properties for the body. Defaults to None.
+        """
 
         self.name = name
         self.radius = radius
@@ -158,11 +191,23 @@ class Body:
         # self._body.setTransparency(True)
 
     def update_earth_shader_sundir_task(self, task):
+        """Updates the shader's sun direction for the Earth.
+
+        Args:
+            task (Task): The Panda3D task object.
+
+        Returns:
+            Task: The continuation status of the task.
+        """
         self.update_shader_sundir(self.parent.dlnp)
         return Task.cont
 
     def update_shader_sundir(self, sun_np):
-        """Update the sundir shader input for this body, given a sun NodePath."""
+        """Updates the shader's sun direction for this body.
+
+        Args:
+            sun_np (NodePath): The NodePath of the sun.
+        """
         # Get sun direction in world space
         sun_dir_world = sun_np.getQuat(self.parent.render).getForward()
         # Get sun direction in this body's local space
@@ -172,12 +217,21 @@ class Body:
         sun_dir_local_rot = rot180.xform(sun_dir_local)
         self._body.setShaderInput("sundir", sun_dir_local_rot)
 
-    def setup_body_fixed_camera(self, view_distance=None):
-        """Set up camera in this body's frame."""
-        self.parent.setup_body_fixed_frame(self, view_distance)
+    def setup_body_fixed_camera(self, view_distance=None, follow_without_rotation=False):
+        """Sets up the camera in this body's frame.
+
+        Args:
+            view_distance (float, optional): Distance from the body to position the camera. Defaults to None.
+            follow_without_rotation (bool, optional): If True, the camera follows the body's position but does not rotate with it. Defaults to False.
+        """
+        self.parent.setup_body_fixed_frame(self, view_distance, follow_without_rotation)
 
     def create_body_fixed_axes(self):
-        # 3D body-fixed axes for a body.
+        """Creates 3D body-fixed axes for the body.
+
+        Returns:
+            NodePath: The NodePath containing the 3D axes.
+        """
         arrow_ambient_np = self.parent.render.attachNewNode(self.parent.arrow_ambient)
         axes_np = self._rotator.attachNewNode("axes")
         axes_np.setPos(0, 0, 0)
@@ -200,14 +254,17 @@ class Body:
         return axes_np
 
     def reparent_to_rotator(self):
-
-        # Reparent the body's children to the rotator node
+        """Reparents the body's children to the rotator node."""
         for child in self._body.getChildren():
             if child.getName() != f"{self.name}_rotator":
                 child.reparentTo(self._rotator)
 
     def set_orientation(self, et: float):
+        """Sets the orientation of the body based on the provided time.
 
+        Args:
+            et (float): The elapsed time used to calculate the orientation.
+        """
         # Get the rotation matrix from your function
         # Assuming it returns a 3x3 numpy matrix or similar
         rotation_matrix = self.get_rotation_matrix(et)
@@ -223,9 +280,18 @@ class Body:
         self._rotator.setQuat(quat)
 
     def get_position_vector(self, et: float):
+        """Calculates the position vector of the body.
 
-        # there is where we would maybe call an ephemeris
-        # For simplicity, let's assume the following orbits:
+        Args:
+            et (float): The elapsed time used to calculate the position.
+
+        Returns:
+            np.ndarray: The position vector of the body.
+
+        ### Notes:
+            * there is where we would maybe call an ephemeris
+              For simplicity, let's assume the orbits.
+        """
 
         # Earth stays at the origin
         if self.name.lower() == "earth":
@@ -268,9 +334,19 @@ class Body:
         return np.array([0.0, 0.0, 0.0])
 
     def get_rotation_matrix(self, et: float):
+        """Calculates the rotation matrix of the body.
 
-        # e.g. call spice to get the body-fixed rotation matrix
-        # This is a simplified example, replace with actual logic to get the rotation matrix
+        Args:
+            et (float): The elapsed time used to calculate the rotation.
+
+        Returns:
+            np.ndarray: The rotation matrix of the body.
+
+        ### Notes
+            * e.g. call spice to get the body-fixed rotation matrix
+              This is a simplified example, replace with actual logic
+              to get the rotation matrix
+        """
 
         if self.name.lower() == "earth":
             # Adjust this speed for your visualization (radians/sec)
@@ -356,6 +432,13 @@ class Body:
         return np.eye(3)
 
     def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001):
+        """Draws country boundaries on the body using a GeoJSON file.
+
+        Args:
+            geojson_path (str): Path to the GeoJSON file.
+            lon_rotate (float, optional): Longitude rotation offset. Defaults to 0.0.
+            radius_pad (float, optional): Padding above the surface to draw the boundaries. Defaults to 0.001.
+        """
 
         with open(geojson_path, 'r') as f:
             data = json.load(f)
@@ -388,6 +471,14 @@ class Body:
         self.boundaries_np.setTransparency(True)
 
     def orbit_task(self, task):
+        """Updates the body's position, orientation, and trace during its orbit.
+
+        Args:
+            task (Task): The Panda3D task object.
+
+        Returns:
+            Task: The continuation status of the task.
+        """
 
         if self.parent.paused:  # Check the pause flag
             return Task.cont  # Skip updates if paused
@@ -527,8 +618,9 @@ class Body:
         Args:
             num_lat (int, optional): Number of latitude lines (excluding poles). Defaults to 9.
             num_lon (int, optional): Number of longitude lines. Defaults to 18.
-            radius_pad (float, optional): how far above surface to draw the grid. Defaults to 0.01.
-            color (tuple, optional): RGBA color for the grid lines. Defaults to (1, 1, 1, 1) - white.
+            radius_pad (float, optional): Padding above the surface to draw the grid. Defaults to 0.01.
+            color (tuple, optional): RGBA color for the grid lines. Defaults to (1, 1, 1, 1).
+            thickness (float, optional): Thickness of the grid lines. Defaults to 1.0.
         """
 
         # --- Latitude/Longitude grid ---

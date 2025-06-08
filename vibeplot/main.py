@@ -115,10 +115,15 @@ class EarthOrbitApp(ShowBase):
 
         # Add key bindings for switching camera focus
         self.accept("1", self.focus_on_earth)
+        self.accept("shift-1", self.focus_on_earth, extraArgs=[True])
         self.accept("2", self.focus_on_moon)
+        self.accept("shift-2", self.focus_on_moon, extraArgs=[True])
         self.accept("3", self.focus_on_mars)
+        self.accept("shift-3", self.focus_on_mars, extraArgs=[True])
         self.accept("4", self.focus_on_venus)
+        self.accept("shift-4", self.focus_on_venus, extraArgs=[True])
         self.accept("5", self.focus_on_site)
+        self.accept("shift-5", self.focus_on_site, extraArgs=[True])
 
         self.scene_anim_running = True
 
@@ -325,14 +330,14 @@ class EarthOrbitApp(ShowBase):
                  name="Venus",
                  texture='models/2k_venus_surface.jpg',
                  radius=VENUS_RADIUS,
-                 trace_length=50,
                  color=(1, 0.8, 0.6, 1),
+                 trace_length=50,
                  orbit_markers=True,
                  marker_size=0.06,
                  marker_interval=5,
                  marker_color=(1, 1, 1, 0.5))
 
-        venus_site = Site(parent=self, name='P1', central_body=self.venus, lat_deg=40, radius = 0.01, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
+        venus_site = Site(parent=self, name='P1', label_scale=0.1, central_body=self.venus, lat_deg=40, radius = 0.01, radius_offset = 0.02, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
 
         self.venus_orbiter = Orbit(
             parent=self,
@@ -345,7 +350,8 @@ class EarthOrbitApp(ShowBase):
             color=(1, 1, 1, 1),
             satellite_color=(1, 1, 1, 1),
             visibility_cone=True,
-            groundtrack=True
+            groundtrack=True,
+            groundtrack_length = 400
         )
 
         self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=40, lon_deg=-105, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
@@ -582,7 +588,7 @@ class EarthOrbitApp(ShowBase):
         self.record_movie = False
         self.movie_writer = None
         self.movie_filename = "output.mp4"
-        self.movie_fps = 120 #60 #30  # or your desired framerate
+        self.movie_fps = 60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
         self.draw_axis_grid()
@@ -786,38 +792,70 @@ class EarthOrbitApp(ShowBase):
         # Just update view parameters if they change
         return Task.cont
 
-    def setup_body_fixed_frame(self, body, view_distance=None):
-        """Set up camera in a body-fixed frame."""
+    def setup_body_fixed_frame(self, body : Body, view_distance: float = None, follow_without_rotation: bool = False):
+        """Sets up the camera in a body-fixed frame.
 
-        # The Scene Graph Hierarchy
-        #
-        # body._rotator
-        # └── camera_pivot (rotated 180°)
-        #     └── trackball (at 0, view_distance, 0)
-        #         └── camera (we need to position this correctly)
+        The camera can either follow the body's position and rotation or follow its position without rotation.
+
+        ### The Scene Graph Hierarchy
+
+        ```
+         body._rotator
+         └── camera_pivot (rotated 180°)
+             └── trackball (at 0, view_distance, 0)
+                 └── camera (we need to position this correctly)
+        ```
+
+        Args:
+            body (Body): The celestial body to focus on.
+            view_distance (float, optional): Distance from the body to position the camera. Defaults to 10 times the body's radius.
+            follow_without_rotation (bool, optional): If True, the camera follows the body's position but does not rotate with it. Defaults to False.
+        """
 
         if not view_distance:
             view_distance = body.radius * 10.0
 
-        # Create a pivot that follows the body
-        if not hasattr(self, 'camera_pivot'):
-            self.camera_pivot = self.render.attachNewNode("camera_pivot")
+        if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
+            self.taskMgr.remove("UpdateFollowNodeTask")
 
         self.stop_inertia()  # Stop any existing inertia
         self.trackball.node().setMat(Mat4())  # Reset matrix to identity
 
-        # Attach pivot to body
-        self.camera_pivot.reparentTo(body._rotator)
-        self.camera_pivot.setHpr(180, 0, 0)
+        if follow_without_rotation:
+            # Create or reuse a node to follow the body without rotation
+            if not hasattr(self, 'camera_follow_node'):
+                self.camera_follow_node = self.render.attachNewNode("camera_follow_node")
 
-        # Parent camera directly to pivot (skip trackball)
-        self.camera.reparentTo(self.camera_pivot)
-        # Position camera AWAY from body center
-        self.camera.setPos(0, -view_distance, 0)
-        # Make camera look at the body center
-        self.camera.lookAt(0, 0, 0)
+            # Update the follow node's position to match the body's position
+            self.camera_follow_node.setPos(body._body.getPos(self.render))
 
-        # update trackball also:
+            # Parent the camera to the follow node
+            self.camera.reparentTo(self.camera_follow_node)
+            self.camera.setPos(0, -view_distance, 0)
+            self.camera.lookAt(self.camera_follow_node)
+
+            # Add a task to update the follow node's position
+            def update_follow_node(task):
+                self.camera_follow_node.setPos(body._body.getPos(self.render))
+                return Task.cont
+
+            self.add_task(update_follow_node, "UpdateFollowNodeTask")
+
+        else:
+            # Create a pivot that follows the body and rotates with it
+            if not hasattr(self, 'camera_pivot'):
+                self.camera_pivot = self.render.attachNewNode("camera_pivot")
+
+            # Attach pivot to body
+            self.camera_pivot.reparentTo(body._rotator)
+            self.camera_pivot.setHpr(180, 0, 0)
+
+            # Parent camera directly to pivot
+            self.camera.reparentTo(self.camera_pivot)
+            self.camera.setPos(0, -view_distance, 0)
+            self.camera.lookAt(0, 0, 0)
+
+        # Update trackball position
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
@@ -846,21 +884,21 @@ class EarthOrbitApp(ShowBase):
         self.resume_scene_animation()
         self.setup_base_frame()
 
-    def focus_on_earth(self):
-        self.earth.setup_body_fixed_camera()
+    def focus_on_earth(self, follow_without_rotation: bool = False):
+        self.earth.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
 
-    def focus_on_moon(self):
-        self.moon.setup_body_fixed_camera()
+    def focus_on_moon(self, follow_without_rotation: bool = False):
+        self.moon.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
 
-    def focus_on_mars(self):
-        self.mars.setup_body_fixed_camera()
+    def focus_on_mars(self, follow_without_rotation: bool = False):
+        self.mars.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
 
-    def focus_on_venus(self):
-        self.venus.setup_body_fixed_camera()
+    def focus_on_venus(self, follow_without_rotation: bool = False):
+        self.venus.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation) # test
 
-    def focus_on_site(self):
+    def focus_on_site(self, follow_without_rotation: bool = False):
         min_safe_distance = EARTH_RADIUS * 1.2  # 20% beyond Earth's radius
-        self.site.setup_body_fixed_camera(view_distance=min_safe_distance)
+        self.site.setup_body_fixed_camera(view_distance=min_safe_distance, follow_without_rotation=follow_without_rotation)
 
     def event_logger(self, *args, **kwargs):
         """Log all events for debugging"""
@@ -1036,14 +1074,13 @@ class EarthOrbitApp(ShowBase):
                 label.hide()
 
     def draw_axis_grid(self, thickness=2.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
-        """
-        Draw coordinate axes with hash marks at specified intervals.
+        """Draws coordinate axes with hash marks at specified intervals.
 
         Args:
-            thickness: Line thickness for the main axes
-            show_grid: Whether to show the background grid
-            tick_interval: Distance between hash marks on axes
-            tick_size: Size of the hash marks
+            thickness (float, optional): Line thickness for the main axes. Defaults to 2.0.
+            show_grid (bool, optional): Whether to show the background grid. Defaults to False.
+            tick_interval (float, optional): Distance between hash marks on axes. Defaults to 1.0.
+            tick_size (float, optional): Size of the hash marks. Defaults to 0.2.
         """
 
         axes = LineSegs()
@@ -1205,7 +1242,15 @@ class EarthOrbitApp(ShowBase):
                 self.setup_camera_view(pos, distance)
 
     def add_task(self, task_func, name):
-        """Add a task to the task manager with a unique name."""
+        """Adds a task to the task manager with a unique name.
+
+        Args:
+            task_func (Callable): The function to be added as a task.
+            name (str): The unique name of the task.
+
+        Returns:
+            bool: True if the task was added successfully, False if the task already exists.
+        """
         if not self.taskMgr.hasTaskNamed(name):
             self.taskMgr.add(task_func, name)
             for _func, _name in self.task_list:
@@ -1232,6 +1277,10 @@ class EarthOrbitApp(ShowBase):
     #         self.scene_anim_running = True
 
     def toggle_scene_animation(self):
+        """Toggles the animation state of the scene.
+
+        Pauses the animation if it is running, and resumes it if it is paused.
+        """
         if self.paused:
             self.resume_scene_animation()
         else:
@@ -1319,6 +1368,14 @@ class EarthOrbitApp(ShowBase):
         return manifold_np
 
     def orbit_task(self, task):
+        """Updates the satellite's position and visibility cone during its orbit.
+
+        Args:
+            task (Task): The Panda3D task object.
+
+        Returns:
+            Task: The continuation status of the task.
+        """
 
         if self.paused:  # Check the pause flag
             return Task.cont  # Skip updates if paused
