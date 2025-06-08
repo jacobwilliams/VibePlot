@@ -389,6 +389,9 @@ class Body:
 
     def orbit_task(self, task):
 
+        if self.parent.paused:  # Check the pause flag
+            return Task.cont  # Skip updates if paused
+
         et = task.time
         #et = self.parent.sim_time if self.parent.use_slider_time else task.time
 
@@ -513,6 +516,8 @@ class Body:
                 self._trace_node.setTransparency(True)
                 self._trace_node.setLightOff()  # Add this line to disable lighting
                 self._trace_node.setTwoSided(True)  # Also add this for better visibility
+
+                self._trace_node.reparentTo(self.parent.render)  # wrt to base frame
 
         return Task.cont
 

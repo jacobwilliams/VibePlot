@@ -56,6 +56,8 @@ class EarthOrbitApp(ShowBase):
         super().__init__()
 
         self.use_slider_time = False
+        self.paused = True  # if the scene is paused
+
         self.sim_time = 0.0  # This will be your time variable
 
         self.setup_gui()
@@ -259,6 +261,18 @@ class EarthOrbitApp(ShowBase):
             visibility_cone=True,
             groundtrack=True
         )
+        self.polar_satellite = Orbit(
+            parent=self,
+            central_body=self.earth,
+            name="polar",
+            radius=EARTH_RADIUS * 5.0,
+            speed=1.0,
+            inclination_deg=90.0,
+            color=(0, 1, 0, 1),
+            satellite_color=(0, 1, 0, 1),
+            visibility_cone=False,
+            groundtrack=False
+        )
 
         # put a site on the Earth:
         site_lat = 0.519 * RAD2DEG   # deg
@@ -360,53 +374,53 @@ class EarthOrbitApp(ShowBase):
                 draw_3d_axes=False  # Disable axes for simplicity
             )
 
+        for inc in range(0, 360, 20):
+            self.moon_satellite_2 = Orbit(
+                parent=self,
+                central_body=self.moon,
+                name=f"moon_satellite_{inc}",
+                radius=MOON_RADIUS * 1.2,
+                satellite_radius = 0.03,
+                thickness=2,
+                speed=2*inc/260,
+                inclination_deg=inc,
+                color=(inc/360, inc/360, 0, 1),
+                satellite_color=(inc/360, inc/360, 0, 1),
+                visibility_cone=False,
+                groundtrack=False,
+                enable_shadow=False
+            )
 
-        self.moon_satellite_2 = Orbit(
-            parent=self,
-            central_body=self.moon,
-            name="moon_satellite",
-            radius=MOON_RADIUS * 2.0,
-            satellite_radius = 0.03,
-            thickness=2,
-            speed=2.0,
-            inclination_deg=10.0,
-            color=(1, 1, 0, 1),
-            satellite_color=(1, 1, 0, 1),
-            visibility_cone=False,
-            groundtrack=False,
-            enable_shadow=False
-        )
 
-
-        # --- Add a satellite orbiting the Moon ---
-        self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
-        self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
-        self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
-        self.moon_satellite.reparentTo(self.moon._body)  # Parent to the Moon so it follows Moon's orbit
-        self.add_task(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
-        # --- Visualize the satellite's orbit path around the Moon ---
-        moon_orbit_segs = LineSegs()
-        moon_orbit_segs.setThickness(2)
-        moon_orbit_segs.setColor(1, 0.5, 0, 1)  # Orange
-        segments = 100
-        self.moon_satellite_inclination = math.radians(30)  # 30 degree inclination
-        for i in range(segments + 1):
-            angle = 2 * math.pi * i / segments
-            x = self.moon_satellite_orbit_radius * math.cos(angle)
-            y = self.moon_satellite_orbit_radius * math.sin(angle)
-            z = 0
-            # Apply inclination (rotation around X axis)
-            y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
-            z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
-            if i == 0:
-                moon_orbit_segs.moveTo(x, y_incl, z_incl)
-            else:
-                moon_orbit_segs.drawTo(x, y_incl, z_incl)
-        self.moon_satellite_orbit_np = self.moon._body.attachNewNode(moon_orbit_segs.create())
-        # self.moon_satellite_orbit_np.setTransparency(True)
-        self.moon_satellite_orbit_np.setLightOff()
-        self.moon_satellite.setTextureOff(1)  # so it doesn't use the moon texture
-        self.moon_satellite.setShaderOff(1)
+        # # --- Add a satellite orbiting the Moon ---
+        # self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
+        # self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
+        # self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
+        # self.moon_satellite.reparentTo(self.moon._body)  # Parent to the Moon so it follows Moon's orbit
+        # self.add_task(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
+        # # --- Visualize the satellite's orbit path around the Moon ---
+        # moon_orbit_segs = LineSegs()
+        # moon_orbit_segs.setThickness(2)
+        # moon_orbit_segs.setColor(1, 0.5, 0, 1)  # Orange
+        # segments = 100
+        # self.moon_satellite_inclination = math.radians(30)  # 30 degree inclination
+        # for i in range(segments + 1):
+        #     angle = 2 * math.pi * i / segments
+        #     x = self.moon_satellite_orbit_radius * math.cos(angle)
+        #     y = self.moon_satellite_orbit_radius * math.sin(angle)
+        #     z = 0
+        #     # Apply inclination (rotation around X axis)
+        #     y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
+        #     z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
+        #     if i == 0:
+        #         moon_orbit_segs.moveTo(x, y_incl, z_incl)
+        #     else:
+        #         moon_orbit_segs.drawTo(x, y_incl, z_incl)
+        # self.moon_satellite_orbit_np = self.moon._body.attachNewNode(moon_orbit_segs.create())
+        # # self.moon_satellite_orbit_np.setTransparency(True)
+        # self.moon_satellite_orbit_np.setLightOff()
+        # self.moon_satellite.setTextureOff(1)  # so it doesn't use the moon texture
+        # self.moon_satellite.setShaderOff(1)
 
         if draw_plane:
             # --- Equatorial plane (square, translucent) ---
@@ -568,10 +582,16 @@ class EarthOrbitApp(ShowBase):
         self.record_movie = False
         self.movie_writer = None
         self.movie_filename = "output.mp4"
-        self.movie_fps = 60 #30  # or your desired framerate
+        self.movie_fps = 120 #60 #30  # or your desired framerate
         self.accept("r", self.toggle_movie_recording)
 
         self.draw_axis_grid()
+
+    def pause_scene_animation(self):
+        self.paused = True  # Set the pause flag to True
+
+    def resume_scene_animation(self):
+        self.paused = False  # Set the pause flag to False
 
     def on_slider_change(self):
         self.sim_time = float(self.time_slider['value'])
@@ -822,6 +842,8 @@ class EarthOrbitApp(ShowBase):
 
     def recenter_on_earth(self):
         """Reset to base render frame."""
+        print("Reset")
+        self.resume_scene_animation()
         self.setup_base_frame()
 
     def focus_on_earth(self):
@@ -1195,25 +1217,25 @@ class EarthOrbitApp(ShowBase):
             print(f"Task '{name}' already exists.")
             return False
 
-    def pause_scene_animation(self):
-        if self.scene_anim_running:
-            for func, name in self.task_list:
-                self.taskMgr.remove(name)
-            # keep the task list intact, so we can resume later
-            self.scene_anim_running = False
+    # def pause_scene_animation(self):
+    #     if self.scene_anim_running:
+    #         for func, name in self.task_list:
+    #             self.taskMgr.remove(name)
+    #         # keep the task list intact, so we can resume later
+    #         self.scene_anim_running = False
 
-    def resume_scene_animation(self):
-        if not self.scene_anim_running:
-            # Re-add all tasks (with correct function references)
-            for func, name in self.task_list:
-                self.add_task(func, name)
-            self.scene_anim_running = True
+    # def resume_scene_animation(self):
+    #     if not self.scene_anim_running:
+    #         # Re-add all tasks (with correct function references)
+    #         for func, name in self.task_list:
+    #             self.add_task(func, name)
+    #         self.scene_anim_running = True
 
     def toggle_scene_animation(self):
-        if self.scene_anim_running:
-            self.pause_scene_animation()
-        else:
+        if self.paused:
             self.resume_scene_animation()
+        else:
+            self.pause_scene_animation()
 
     def line_intersects_sphere(self, p1, p2, sphere_center, sphere_radius):
         # p1, p2: endpoints of the line (Point3)
@@ -1297,6 +1319,10 @@ class EarthOrbitApp(ShowBase):
         return manifold_np
 
     def orbit_task(self, task):
+
+        if self.paused:  # Check the pause flag
+            return Task.cont  # Skip updates if paused
+
         angle = task.time * self.orbit_speed
         inclination = math.radians(45)  # 45 degree inclination
         x = self.orbit_radius * math.cos(angle)
@@ -1419,14 +1445,20 @@ class EarthOrbitApp(ShowBase):
         return Task.cont
 
     def particles_orbit_task(self, task):
+
+        if self.paused:  # Check the pause flag
+            return Task.cont  # Skip updates if paused
+
         self.frame_count += 1
         # self.hud_text.setText(f"Frame: {self.frame_count}")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         fps = globalClock.getAverageFrameRate()
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         cpu = self.process.cpu_percent()
+        elapsed_time = task.time
         text_to_display = [f"FPS: {fps:.1f}",   # f"{now}",
                            f"Frame: {self.frame_count}",
+                           f"Time: {elapsed_time:.2f} s",
                            f"Mem: {mem_mb:.1f} MB",
                            f"CPU: {cpu:.1f}%"]
         self.hud_text.setText('\n'.join(text_to_display))
@@ -1743,16 +1775,20 @@ class EarthOrbitApp(ShowBase):
 
         self.add_task(orbit_anim_task, "OrbitAnimTask")
 
-    def moon_satellite_orbit_task(self, task):
-        angle = task.time * self.moon_satellite_orbit_speed
-        x = self.moon_satellite_orbit_radius * math.cos(angle)
-        y = self.moon_satellite_orbit_radius * math.sin(angle)
-        z = 0
-        # Apply inclination (rotation around X axis)
-        y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
-        z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
-        self.moon_satellite.setPos(x, y_incl, z_incl)
-        return Task.cont
+    # def moon_satellite_orbit_task(self, task):
+
+    #     if self.paused:  # Check the pause flag
+    #         return Task.cont  # Skip updates if paused
+
+    #     angle = task.time * self.moon_satellite_orbit_speed
+    #     x = self.moon_satellite_orbit_radius * math.cos(angle)
+    #     y = self.moon_satellite_orbit_radius * math.sin(angle)
+    #     z = 0
+    #     # Apply inclination (rotation around X axis)
+    #     y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
+    #     z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
+    #     self.moon_satellite.setPos(x, y_incl, z_incl)
+    #     return Task.cont
 
     def add_stars(self, filename="models/Stars_HYGv3.txt", num_stars=100):
         """this one draws stars as spheres. this is not as efficient, but

@@ -3,6 +3,7 @@ from direct.task import Task
 from panda3d.core import Point3, LineSegs, NodePath, GeomNode, Geom, GeomVertexFormat, GeomVertexData, GeomVertexWriter, GeomTriangles, Vec3
 
 from .bodies import Body
+from .utilities import create_sphere
 
 class Orbit:
     def __init__(self, parent, name: str, central_body: Body, radius: float = 5.0, speed: float = 1.0,
@@ -62,7 +63,6 @@ class Orbit:
 
     def _create_satellite(self):
         """Create the satellite geometry"""
-        from .utilities import create_sphere
         satellite = create_sphere(
             radius=self.satellite_radius,
             num_lat=24,
@@ -91,10 +91,19 @@ class Orbit:
         orbit_segs.setThickness(self.thickness)
         orbit_segs.setColor(*self.color)
 
+        # Get the central body's position in the global coordinate system
+       # central_body_pos = self.central_body._body.getPos(self.parent.render)
+
         # Create orbit path in local coordinates (relative to central body)
         for i in range(self.num_segments + 1):
             angle = 2 * math.pi * i / self.num_segments
             x, y, z = self.get_orbit_state(angle)
+
+            # # Offset the orbit path by the central body's position
+            # x += central_body_pos.x
+            # y += central_body_pos.y
+            # z += central_body_pos.z
+
             if i == 0:
                 orbit_segs.moveTo(x, y, z)
             else:
@@ -103,9 +112,14 @@ class Orbit:
         orbit_np = NodePath(orbit_segs.create())
         # Parent to central body instead of render so it follows the body
         # orbit_np.reparentTo(self.central_body._body)
+
         orbit_np.reparentTo(self.parent.render)  # Not to the body!
+        # orbit_np.reparentTo(self.central_body._body)  # Parent to the central body - test
 
         orbit_np.setLightOff()  # Turn off lighting
+        orbit_np.setTextureOff()
+        orbit_np.setShaderOff()
+
         #orbit_np.setColorOff()  # Don't inherit parent's color
         #orbit_np.setColor(self.color)  # Set explicit color
         orbit_np.clearColor()   # <--- This removes the parent's color override!
@@ -240,6 +254,10 @@ class Orbit:
 
     def orbit_task(self, task):
         """Main orbit animation task"""
+
+        if self.parent.paused:  # Check the pause flag
+            return Task.cont  # Skip updates if paused
+
         # Calculate satellite position in LOCAL coordinates relative to central body
         angle = task.time * self.speed
         x, y, z = self.get_orbit_state(angle)
@@ -248,25 +266,30 @@ class Orbit:
         sat_pos_local = Point3(x, y, z)
 
         # Convert local position to world position for satellite placement
-        sat_pos_world = self.central_body._body.getPos(self.parent.render) + \
-                        self.central_body._body.getQuat(self.parent.render).xform   (sat_pos_local)
+        # note: this will rotate with the body:
+        # sat_pos_world = self.central_body._body.getPos(self.parent.render) + \
+        #                 self.central_body._body.getQuat(self.parent.render).xform   (sat_pos_local)
+        # this is in the base frame of the central body, not rotating with it:
+        sat_pos_base_frame = self.central_body._body.getPos(self.parent.render) + sat_pos_local
 
         # Update satellite position in world coordinates
-        self.satellite.setPos(sat_pos_world)
+        # self.satellite.setPos(sat_pos_world)
+        self.satellite.setPos(sat_pos_base_frame)
 
         # Keep the orbit path visually centered on the central body
-        if self.orbit_path_np:
-            body_np = self.central_body._body
-            self.orbit_path_np.setPos(body_np.getPos(self.parent.render))
-            self.orbit_path_np.setQuat(body_np.getQuat(self.parent.render))
+        # if self.orbit_path_np:
+        #     body_np = self.central_body._body
+        #     self.orbit_path_np.setPos(body_np.getPos(self.parent.render))
+        #     self.orbit_path_np.setQuat(body_np.getQuat(self.parent.render))
+        #..,. note: the above make the orbit rotate with the body...
 
         # Update visibility cone
         if self.visibility_cone_enabled:
-            base_points = self._create_visibility_cone(sat_pos_world)
+            base_points = self._create_visibility_cone(sat_pos_base_frame)
             self._create_cone_outline(base_points)
 
         # Update groundtrack
-        self._update_groundtrack(sat_pos_world)
+        self._update_groundtrack(sat_pos_base_frame)
 
         return Task.cont
 
