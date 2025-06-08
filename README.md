@@ -27,6 +27,7 @@ Keys:
  * 'shift-3' -- center on Mars, in the base frame
  * 'shift-4' -- center on Venus, in the base frame
  * 'shift-5' -- center on Site, in the base frame
+ * '6' -- look at Mars from the surface of Venus
 
 ### See also
 
