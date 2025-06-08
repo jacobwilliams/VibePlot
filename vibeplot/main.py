@@ -125,6 +125,8 @@ class EarthOrbitApp(ShowBase):
         self.accept("5", self.focus_on_site)
         self.accept("shift-5", self.focus_on_site, extraArgs=[True])
 
+        self.accept("6", self.venus_mars_frame)  # test. center on venus but look at mars
+
         self.scene_anim_running = True
 
         # messenger.toggleVerbose()  # Enable verbose messenger output
@@ -792,70 +794,124 @@ class EarthOrbitApp(ShowBase):
         # Just update view parameters if they change
         return Task.cont
 
-    def setup_body_fixed_frame(self, body : Body, view_distance: float = None, follow_without_rotation: bool = False):
+    def setup_body_fixed_frame(self, body: Body, view_distance: float = None, follow_without_rotation: bool = False, body_to_look_at: Body = None):
         """Sets up the camera in a body-fixed frame.
 
         The camera can either follow the body's position and rotation or follow its position without rotation.
-
-        ### The Scene Graph Hierarchy
-
-        ```
-         body._rotator
-         └── camera_pivot (rotated 180°)
-             └── trackball (at 0, view_distance, 0)
-                 └── camera (we need to position this correctly)
-        ```
+        Additionally, the camera can look at another body while being centered on the given body.
 
         Args:
             body (Body): The celestial body to focus on.
             view_distance (float, optional): Distance from the body to position the camera. Defaults to 10 times the body's radius.
             follow_without_rotation (bool, optional): If True, the camera follows the body's position but does not rotate with it. Defaults to False.
+            body_to_look_at (Body, optional): The celestial body for the camera to look at. Defaults to None (camera looks at `body`).
+
+        ### The Scene Graph Hierarchy
+
+        ```
+        body._rotator
+        └── camera_pivot (rotated 180°)
+            └── trackball (at 0, view_distance, 0)
+                └── camera (we need to position this correctly)
+        ```
+
         """
 
         if not view_distance:
             view_distance = body.radius * 10.0
 
+        # Remove any existing follow node or look-at tasks
         if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
             self.taskMgr.remove("UpdateFollowNodeTask")
+        if self.taskMgr.hasTaskNamed("UpdateCameraLookAtTask"):
+            self.taskMgr.remove("UpdateCameraLookAtTask")
 
         self.stop_inertia()  # Stop any existing inertia
         self.trackball.node().setMat(Mat4())  # Reset matrix to identity
+
+        # Clean up any existing camera pivot
+        if hasattr(self, 'camera_pivot'):
+            self.camera_pivot.removeNode()
+            del self.camera_pivot
 
         if follow_without_rotation:
             # Create or reuse a node to follow the body without rotation
             if not hasattr(self, 'camera_follow_node'):
                 self.camera_follow_node = self.render.attachNewNode("camera_follow_node")
 
-            # Update the follow node's position to match the body's position
-            self.camera_follow_node.setPos(body._body.getPos(self.render))
-
             # Parent the camera to the follow node
             self.camera.reparentTo(self.camera_follow_node)
-            self.camera.setPos(0, -view_distance, 0)
-            self.camera.lookAt(self.camera_follow_node)
 
-            # Add a task to update the follow node's position
-            def update_follow_node(task):
-                self.camera_follow_node.setPos(body._body.getPos(self.render))
+            # Add a single task to update both position and orientation
+            def update_follow_node_task(task):
+                # Get the body's current position in world coordinates
+                body_world_pos = body._body.getPos(self.render)
+
+                # Position the follow node at the body's location
+                self.camera_follow_node.setPos(body_world_pos)
+
+                # Position the camera at the specified distance from the body
+                if body_to_look_at:
+                    # Get the target body's position
+                    target_world_pos = body_to_look_at._body.getPos(self.render)
+
+                    # Calculate direction from target to body (opposite direction)
+                    direction = (body_world_pos - target_world_pos).normalized()
+
+                    # Position camera slightly past the body, away from the target
+                    camera_offset = direction * -view_distance
+                    # camera_offset = direction * -body.radius
+                    self.camera.setPos(camera_offset)
+
+                    # Make camera look at the target
+                    self.camera.lookAt(target_world_pos - body_world_pos)  # Relative to follow node
+                else:
+                    # Default: position camera behind and look at the body center
+                    self.camera.setPos(0, -view_distance, 0)
+                    self.camera.lookAt(0, 0, 0)  # Look at the center of the follow node
+
                 return Task.cont
 
-            self.add_task(update_follow_node, "UpdateFollowNodeTask")
+            self.add_task(update_follow_node_task, "UpdateFollowNodeTask")
 
         else:
             # Create a pivot that follows the body and rotates with it
-            if not hasattr(self, 'camera_pivot'):
-                self.camera_pivot = self.render.attachNewNode("camera_pivot")
+            self.camera_pivot = self.render.attachNewNode("camera_pivot")
 
-            # Attach pivot to body
+            # Attach pivot to body's rotator
             self.camera_pivot.reparentTo(body._rotator)
             self.camera_pivot.setHpr(180, 0, 0)
 
-            # Parent camera directly to pivot
+            # Parent camera to pivot
             self.camera.reparentTo(self.camera_pivot)
-            self.camera.setPos(0, -view_distance, 0)
-            self.camera.lookAt(0, 0, 0)
 
-        # Update trackball position
+            if body_to_look_at:
+                # Position camera at distance and add task to look at target
+                def update_camera_look_at_task(task):
+                    # Get target position relative to the body's rotator
+                    target_world_pos = body_to_look_at._body.getPos(self.render)
+                    body_world_pos = body._body.getPos(self.render)
+
+                    # Calculate direction from target to body (opposite direction)
+                    direction = (body_world_pos - target_world_pos).normalized()
+
+                    # Position camera slightly past the body, away from the target
+                    camera_offset = direction * view_distance
+                    local_offset = self.camera_pivot.getRelativeVector(self.render, camera_offset)
+                    self.camera.setPos(local_offset)
+
+                    # Convert target to local coordinate system and look at it
+                    target_local_pos = self.camera_pivot.getRelativePoint(self.render, target_world_pos)
+                    self.camera.lookAt(target_local_pos)
+                    return Task.cont
+
+                self.add_task(update_camera_look_at_task, "UpdateCameraLookAtTask")
+            else:
+                # Default behavior: position camera and look at body center
+                self.camera.setPos(0, -view_distance, 0)
+                self.camera.lookAt(0, 0, 0)
+
+        # Update trackball position to match camera
         self.trackball.node().setPos(0, view_distance, 0)
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
@@ -881,6 +937,23 @@ class EarthOrbitApp(ShowBase):
     def recenter_on_earth(self):
         """Reset to base render frame."""
         print("Reset")
+
+        # Clean up tasks created by setup_body_fixed_frame
+        if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
+            self.taskMgr.remove("UpdateFollowNodeTask")
+        if self.taskMgr.hasTaskNamed("UpdateCameraLookAtTask"):
+            self.taskMgr.remove("UpdateCameraLookAtTask")
+
+        # Clean up camera follow node
+        if hasattr(self, 'camera_follow_node'):
+            self.camera_follow_node.removeNode()
+            del self.camera_follow_node
+
+        # Clean up camera pivot
+        if hasattr(self, 'camera_pivot'):
+            self.camera_pivot.removeNode()
+            del self.camera_pivot
+
         self.resume_scene_animation()
         self.setup_base_frame()
 
@@ -894,7 +967,11 @@ class EarthOrbitApp(ShowBase):
         self.mars.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
 
     def focus_on_venus(self, follow_without_rotation: bool = False):
-        self.venus.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation) # test
+        self.venus.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
+
+    def venus_mars_frame(self, follow_without_rotation: bool = False):
+        view_distance = self.venus.radius # just at the body surface
+        self.venus.setup_body_fixed_camera(follow_without_rotation=True, body_to_look_at=self.mars, view_distance=view_distance)
 
     def focus_on_site(self, follow_without_rotation: bool = False):
         min_safe_distance = EARTH_RADIUS * 1.2  # 20% beyond Earth's radius

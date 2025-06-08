@@ -217,14 +217,14 @@ class Body:
         sun_dir_local_rot = rot180.xform(sun_dir_local)
         self._body.setShaderInput("sundir", sun_dir_local_rot)
 
-    def setup_body_fixed_camera(self, view_distance=None, follow_without_rotation=False):
+    def setup_body_fixed_camera(self, view_distance=None, follow_without_rotation=False, body_to_look_at=None):
         """Sets up the camera in this body's frame.
 
         Args:
             view_distance (float, optional): Distance from the body to position the camera. Defaults to None.
             follow_without_rotation (bool, optional): If True, the camera follows the body's position but does not rotate with it. Defaults to False.
         """
-        self.parent.setup_body_fixed_frame(self, view_distance, follow_without_rotation)
+        self.parent.setup_body_fixed_frame(self, view_distance, follow_without_rotation, body_to_look_at)
 
     def create_body_fixed_axes(self):
         """Creates 3D body-fixed axes for the body.
