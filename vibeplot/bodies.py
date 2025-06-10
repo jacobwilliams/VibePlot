@@ -7,7 +7,8 @@ from direct.task import Task
 
 from .utilities import create_sphere, lonlat_to_xyz, create_body_fixed_arrow
 
-EARTH_RADIUS = 1.0  # Default radius for Earth-like bodies, can be adjusted
+EARTH_RADIUS = 2.0  # Default radius for Earth-like bodies, can be adjusted
+# ... need to avoid setting this here ...
 
 class Body:
     """A class representing a celestial body.

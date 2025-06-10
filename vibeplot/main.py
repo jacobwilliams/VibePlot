@@ -62,6 +62,10 @@ class EarthOrbitApp(ShowBase):
 
         self.setup_gui()
 
+        # self.render.setScale(1)
+        # self.camLens.setNear(1000)
+        # self.camLens.setFar(1e8)
+
         # Initialize tracking variables
         self.tracked_body = None
         self.tracked_distance = 0
