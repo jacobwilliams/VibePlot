@@ -645,6 +645,43 @@ class EarthOrbitApp(ShowBase):
             parent=self.gui_frame
         )
 
+        # Create a frame for the menu at the bottom of the window
+        self.menu_frame = DirectFrame(
+            frameColor=(0, 0, 0, 0.4),  # Semi-transparent black
+            frameSize=(-aspect, aspect, -0.1, 0.1),  # Full width, adjust height for button size
+            pos=(0, 0, -0.9),  # Position at the bottom of the window
+        )
+
+        # Button configuration
+        button_scale = 0.07
+        button_spacing = 0.27  # Horizontal spacing between buttons
+        button_start_x = -aspect + 0.1  # Start from the left side of the frame
+
+        # Add buttons for each keypress option
+        buttons = [
+            ("Earth+", self.focus_on_earth, False),
+            ("Earth", self.focus_on_earth, True),
+            ("Moon+", self.focus_on_moon, False),
+            ("Moon", self.focus_on_moon, True),
+            ("Mars+", self.focus_on_mars, False),
+            ("Mars", self.focus_on_mars, True),
+            ("Venus+", self.focus_on_venus, False),
+            ("Venus", self.focus_on_venus, True),
+            ("Site+", self.focus_on_site, False),
+            ("Site", self.focus_on_site, True),
+            ("Venus-Mars", self.venus_mars_frame, True),
+        ]
+
+        for i, (label, command, extra_arg) in enumerate(buttons):
+            DirectButton(
+                text=label,
+                scale=button_scale,
+                pos=(button_start_x + i * button_spacing, 0, 0),  # Horizontal layout
+                command=command,
+                extraArgs=[extra_arg] if extra_arg is not None else [],
+                parent=self.menu_frame,
+            )
+
     # def setup_zoom_controls(self):
     #     """Monitor zoom changes and apply minimum distance limits."""
     #     # DISABLE the trackball's built-in zoom
@@ -842,36 +879,17 @@ class EarthOrbitApp(ShowBase):
             # Parent the camera to the follow node
             self.camera.reparentTo(self.camera_follow_node)
 
-            # Add a single task to update both position and orientation
             def update_follow_node_task(task):
-                # Get the body's current position in world coordinates
-                body_world_pos = body._body.getPos(self.render)
-
-                # Position the follow node at the body's location
-                self.camera_follow_node.setPos(body_world_pos)
-
-                # Position the camera at the specified distance from the body
                 if body_to_look_at:
-                    # Get the target body's position
-                    target_world_pos = body_to_look_at._body.getPos(self.render)
-
-                    # Calculate direction from target to body (opposite direction)
-                    direction = (body_world_pos - target_world_pos).normalized()
-
-                    # Position camera slightly past the body, away from the target
-                    camera_offset = direction * -view_distance
-                    # camera_offset = direction * -body.radius
-                    self.camera.setPos(camera_offset)
-
-                    # Make camera look at the target
-                    self.camera.lookAt(target_world_pos - body_world_pos)  # Relative to follow node
+                    current_body_pos = body._body.getPos(self.render)
+                    current_target_pos = body_to_look_at._body.getPos(self.render)
+                    self.camera_follow_node.setPos(current_body_pos)
+                    self.trackball.node().setOrigin(current_body_pos)
+                    self.camera.lookAt(current_target_pos - current_body_pos)
                 else:
-                    # Default: position camera behind and look at the body center
-                    self.camera.setPos(0, -view_distance, 0)
-                    self.camera.lookAt(0, 0, 0)  # Look at the center of the follow node
-
+                    current_body_pos = body._body.getPos(self.render)
+                    self.camera_follow_node.setPos(current_body_pos)  # ← Only follow node
                 return Task.cont
-
             self.add_task(update_follow_node_task, "UpdateFollowNodeTask")
 
         else:
