@@ -595,6 +595,8 @@ class EarthOrbitApp(ShowBase):
 
         self.draw_axis_grid()
 
+        self.recenter_on_earth()  # start the animation centered on Earth
+
     def pause_scene_animation(self):
         self.paused = True  # Set the pause flag to True
 
@@ -606,6 +608,59 @@ class EarthOrbitApp(ShowBase):
         self.use_slider_time = True  # Enter manual time mode
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
+    def show_menu(self):
+
+        # Remove old menu if it exists
+        if hasattr(self, 'menu_popup') and self.menu_popup:
+            self.menu_popup.destroy()
+            self.menu_popup = None
+            return
+
+        aspect = self.getAspectRatio()
+
+        # Create a popup frame for the menu
+        self.menu_popup = DirectFrame(
+            frameColor=(0, 0, 0, 0.8),
+            frameSize=(-aspect, aspect, -0.15, 0.15),  # full width, adjust height as needed
+            pos=(0, 0, 0.85),  # Centered at top of window
+        )
+
+        # Add menu options as buttons
+        options = [
+            ("Earth (body-fixed)", self.focus_on_earth, False),
+            ("Earth (inertial)", self.focus_on_earth, True),
+            ("Moon (body-fixed)", self.focus_on_moon, False),
+            ("Moon (inertial)", self.focus_on_moon, True),
+            ("Mars (body-fixed)", self.focus_on_mars, False),
+            ("Mars (inertial)", self.focus_on_mars, True),
+            ("Venus (body-fixed)", self.focus_on_venus, False),
+            ("Venus (inertial)", self.focus_on_venus, True),
+            ("Site (body-fixed)", self.focus_on_site, False),
+            ("Site (inertial)", self.focus_on_site, True),
+            ("Venus-Mars frame", self.venus_mars_frame, True),
+            ("Close", self.menu_popup.destroy, None),
+        ]
+
+        for i, (label, command, arg) in enumerate(options):
+            if arg is None:
+                # If no argument, just use the command directly
+                DirectButton(
+                    text=label,
+                    scale=0.06,
+                    pos=(0, 0, -0.3 + 0.3 - i * 0.15),
+                    command=command,
+                    parent=self.menu_popup
+                )
+            else:
+                DirectButton(
+                    text=label,
+                    scale=0.06,
+                    pos=(0, 0, -0.3 + 0.3 - i * 0.15),
+                    command=command,
+                    extraArgs=[arg],
+                    parent=self.menu_popup
+                )
+
     def setup_gui(self):
         """Add some GUI elements for interaction."""
 
@@ -615,6 +670,14 @@ class EarthOrbitApp(ShowBase):
             frameColor=(0, 0, 0, 0.4),
             frameSize=(-aspect, aspect, -0.15, 0.15),  # full width, adjust height as needed
             pos=(0, 0, 0.85),  # Centered at top of window
+        )
+
+        # View button, that shows a "menu" of buttons for the views:
+        self.menu_button = DirectButton(
+            text="View",
+            scale=0.07,
+            pos=(1.25, 0, 0.85),
+            command=self.show_menu
         )
 
         # GUI elements:
@@ -644,43 +707,6 @@ class EarthOrbitApp(ShowBase):
             text_bg=(0, 0, 0, 1),
             parent=self.gui_frame
         )
-
-        # Create a frame for the menu at the bottom of the window
-        self.menu_frame = DirectFrame(
-            frameColor=(0, 0, 0, 0.4),  # Semi-transparent black
-            frameSize=(-aspect, aspect, -0.1, 0.1),  # Full width, adjust height for button size
-            pos=(0, 0, -0.9),  # Position at the bottom of the window
-        )
-
-        # Button configuration
-        button_scale = 0.07
-        button_spacing = 0.27  # Horizontal spacing between buttons
-        button_start_x = -aspect + 0.1  # Start from the left side of the frame
-
-        # Add buttons for each keypress option
-        buttons = [
-            ("Earth+", self.focus_on_earth, False),
-            ("Earth", self.focus_on_earth, True),
-            ("Moon+", self.focus_on_moon, False),
-            ("Moon", self.focus_on_moon, True),
-            ("Mars+", self.focus_on_mars, False),
-            ("Mars", self.focus_on_mars, True),
-            ("Venus+", self.focus_on_venus, False),
-            ("Venus", self.focus_on_venus, True),
-            ("Site+", self.focus_on_site, False),
-            ("Site", self.focus_on_site, True),
-            ("Venus-Mars", self.venus_mars_frame, True),
-        ]
-
-        for i, (label, command, extra_arg) in enumerate(buttons):
-            DirectButton(
-                text=label,
-                scale=button_scale,
-                pos=(button_start_x + i * button_spacing, 0, 0),  # Horizontal layout
-                command=command,
-                extraArgs=[extra_arg] if extra_arg is not None else [],
-                parent=self.menu_frame,
-            )
 
     # def setup_zoom_controls(self):
     #     """Monitor zoom changes and apply minimum distance limits."""
