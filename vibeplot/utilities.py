@@ -1,4 +1,5 @@
 import math
+import random
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter,
                           Geom, GeomNode, GeomTriangles, NodePath, Vec3)
 
@@ -120,3 +121,13 @@ def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
     node.addGeom(geom)
     sphere_np = NodePath(node)
     return sphere_np
+
+def random_rgba(alpha=1.0):
+    """
+    Generate a random (r, g, b, a) tuple.
+    Args:
+        alpha (float): Alpha value to use (default 1.0).
+    Returns:
+        tuple: (r, g, b, a) with r, g, b in [0, 1] and a as specified.
+    """
+    return (random.random(), random.random(), random.random(), alpha)

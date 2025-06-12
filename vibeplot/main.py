@@ -23,9 +23,9 @@ from .sites import Site
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
                           Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
-                          loadPrcFileData, LineSegs, TextNode,
+                          loadPrcFileData, LineSegs,
                           CardMaker, TransparencyAttrib,
-                          WindowProperties,
+                          WindowProperties, TextNode,
                           Shader, Mat3, GeomPoints,
                           Quat, AntialiasAttrib, GeomVertexArrayFormat
                           )
@@ -284,6 +284,45 @@ class EarthOrbitApp(ShowBase):
             visibility_cone=False,
             groundtrack=False
         )
+        self.json_orbit = Orbit(
+            parent=self,
+            central_body=self.earth,
+            name="json_orbit",
+            radius=EARTH_RADIUS * 5.0,
+            speed=4.0,
+            orbit_json='models/test_orbit.json',
+            spline_mode="cubic",  # linear or cubic
+            time_step = 0.1,       # can specify time step for resplining
+            #num_segments=5,
+            color=(1, 0, 1, 1),
+            satellite_color=(1, 0, 1, 1),
+            thickness=5,
+            satellite_radius=0.3,
+            visibility_cone=False,
+            groundtrack=False
+        )
+
+        # self.orbits = []
+        # for i in range(18):
+        #     c = random_rgba()
+        #     name = f"S{i}"
+        #     s = Orbit(  parent=self,
+        #                 central_body=self.earth,
+        #                 name=name,
+        #                 radius=EARTH_RADIUS * 10.0,
+        #                 speed=2.0,
+        #                 inclination_deg=i*10,
+        #                 spline_mode="cubic",  # linear or cubic
+        #                 time_step = 0.1,       # can specify time step for resplining
+        #                 label_text=name,
+        #                 label_color=(1,1,1,1),
+        #                 color=c,
+        #                 satellite_color=c,
+        #                 thickness=2,
+        #                 satellite_radius=0.3,
+        #                 visibility_cone=False,
+        #                 groundtrack=False )
+        #     self.orbits.append(s)
 
         # put a site on the Earth:
         site_lat = 0.519 * RAD2DEG   # deg
@@ -471,7 +510,6 @@ class EarthOrbitApp(ShowBase):
         # Add orbit task
         self.orbit_radius = EARTH_RADIUS * 2.0
         self.orbit_speed = 1.0 #0.5  # radians per second
-        #self.add_task(self.orbit_task, "OrbitTask")
 
         # Add a small sphere as the satellite
         self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
@@ -488,26 +526,6 @@ class EarthOrbitApp(ShowBase):
         self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
         self.visibility_cone_angle = math.radians(5)  # cone half-angle in radians
         self.visibility_cone_segments = 24  # smoothness of the cone
-
-        # Draw the orbit path
-        self.orbit_segs = LineSegs()
-        self.orbit_segs.setThickness(2.0)
-        self.orbit_segs.setColor(1, 1, 0, 1)  # Yellow
-        num_segments = 100
-        inclination = math.radians(45)
-        for i in range(num_segments + 1):
-            angle = 2 * math.pi * i / num_segments
-            x = self.orbit_radius * math.cos(angle)
-            y = self.orbit_radius * math.sin(angle)
-            z = 0
-            y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-            z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-            self.orbit_segs.drawTo(x, y_incl, z_incl)
-        self.orbit_np = NodePath(self.orbit_segs.create())
-        self.orbit_np.reparentTo(self.render)
-        self.orbit_np.setLightOff()  # Turn off lighting completely
-
-        self.add_task(self.orbit_task, "OrbitTask")
 
         # to pulsate the orbit line:
         # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
@@ -1252,13 +1270,15 @@ class EarthOrbitApp(ShowBase):
         self.record_movie = not self.record_movie
         if self.record_movie:
             print("Recording started.")
-            # self.movie_writer = imageio.get_writer(self.movie_filename, fps=self.movie_fps)
             self.movie_writer = imageio.get_writer(self.movie_filename, fps=self.movie_fps, codec='libx264', format='ffmpeg')
+            self.add_task(self.movie_writer_task, "MovieWriterTask")
         else:
             print("Recording stopped.")
             if self.movie_writer:
                 self.movie_writer.close()
                 self.movie_writer = None
+            if self.taskMgr.hasTaskNamed("MovieWriterTask"):
+                self.taskMgr.remove("MovieWriterTask")
 
     def on_mouse_click(self):
         if self.mouseWatcherNode.hasMouse():
@@ -1398,138 +1418,16 @@ class EarthOrbitApp(ShowBase):
         manifold_np.setBin('transparent', 10)
         return manifold_np
 
-    def orbit_task(self, task):
-        """Updates the satellite's position and visibility cone during its orbit.
+    def movie_writer_task(self, task):
+        """Task to capture frames for movie recording."""
+        if not self.record_movie or not self.movie_writer:
+            return Task.done  # Stop the task if not recording
 
-        Args:
-            task (Task): The Panda3D task object.
-
-        Returns:
-            Task: The continuation status of the task.
-        """
-
-        if self.paused:  # Check the pause flag
-            return Task.cont  # Skip updates if paused
-
-        angle = task.time * self.orbit_speed
-        inclination = math.radians(45)  # 45 degree inclination
-        x = self.orbit_radius * math.cos(angle)
-        y = self.orbit_radius * math.sin(angle)
-        z = 0
-        # Rotate around X axis for inclination
-        y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-        z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-        sat_pos = Point3(x, y_incl, z_incl)
-        self.satellite.setPos(sat_pos)
-
-        # --- Visibility cone ---
-        # Earth center
-        earth_center = Point3(0, 0, 0)
-        v = sat_pos - earth_center
-        v_len = v.length()
-        if v_len != 0:
-            surface_point = earth_center + v * (EARTH_RADIUS / v_len)
-        else:
-            surface_point = earth_center
-
-        # Cone geometry
-        self.visibility_cone_np.node().removeAllChildren()
-
-        # Calculate cone base radius
-        cone_height = (sat_pos - surface_point).length()
-        base_radius = cone_height * math.tan(self.visibility_cone_angle)
-
-        # Find orthonormal basis for the cone base
-        axis = (surface_point - sat_pos).normalized()
-        # Find a vector not parallel to axis
-        up = Vec3(0, 0, 1) if abs(axis.dot(Vec3(0, 0, 1))) < 0.99 else Vec3(0, 1, 0)
-        right = axis.cross(up).normalized()
-        up = right.cross(axis).normalized()
-
-        # Build cone geometry
-        format = GeomVertexFormat.getV3c4()
-        vdata = GeomVertexData('cone', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        color = GeomVertexWriter(vdata, 'color')
-
-        # Apex
-        vertex.addData3(sat_pos)
-        color.addData4(1, 1, 0, 0.3)  # semi-transparent yellow
-
-        # Base circle
-        base_points = []
-        for i in range(self.visibility_cone_segments + 1):
-            theta = 2 * math.pi * i / self.visibility_cone_segments
-            dir_vec = (right * math.cos(theta)  + up * math.sin(theta)) * base_radius
-            pt = surface_point + dir_vec
-            base_points.append(pt)
-            vertex.addData3(pt)
-            color.addData4(1, 1, 0, 0.15)  # more transparent
-
-        # Triangles
-        tris = GeomTriangles(Geom.UHStatic)
-        for i in range(self.visibility_cone_segments):
-            tris.addVertices(0, i + 1, i + 2)
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('cone')
-        node.addGeom(geom)
-        cone_np = self.visibility_cone_np.attachNewNode(node)
-        cone_np.setTransparency(True)
-        cone_np.setLightOff()  # Turn off lighting completely
-
-        # Draw the intersection outline
-        if hasattr(self, "cone_outline_np"):
-            self.cone_outline_np.removeNode()
-        outline = LineSegs()
-        outline.setThickness(2.0)
-        outline.setColor(1, 1, 0, 1)  # Bright yellow
-        for i, pt in enumerate(base_points):
-            if i == 0:
-                outline.moveTo(pt)
-            else:
-                outline.drawTo(pt)
-        # Close the loop
-        if base_points:
-            outline.drawTo(base_points[0])
-        self.cone_outline_np = self.render.attachNewNode(outline.create())
-        self.cone_outline_np.setTransparency(True)
-        self.cone_outline_np.setLightOff()  # Turn off lighting completely
-
-        # Project satellite position onto Earth's surface
-        sat_vec = sat_pos - Point3(0, 0, 0)
-        if sat_vec.length() != 0:
-            ground_point = sat_vec.normalized() * (EARTH_RADIUS + .001)
-            # Convert to Earth's local coordinates
-            ground_point_local = self.earth._body.getRelativePoint(self.render, ground_point)
-            self.groundtrack_trace.append(ground_point_local)
-
-            # uncomment to make it a trace:
-            if len(self.groundtrack_trace) > self.groundtrack_length:
-               self.groundtrack_trace.pop(0)
-            # Draw the groundtrack
-            self.groundtrack_node.node().removeAllChildren()
-            segs = LineSegs()
-            segs.setThickness(2.0)
-            segs.setColor(1, 0.5, 0, 1)  # Orange
-            for i, pt in enumerate(self.groundtrack_trace):
-                alpha = i / self.groundtrack_length  # Fades from 0 to 1
-                segs.setColor(1, 0.5, 0, alpha)
-                if i == 0:
-                    segs.moveTo(pt)
-                else:
-                    segs.drawTo(pt)
-            self.groundtrack_node.attachNewNode(segs.create())
-            self.groundtrack_node.setTransparency(True)
-            self.groundtrack_node.setLightOff()  # Turn off lighting completely
-
-        if self.record_movie and self.movie_writer:
-            tex = self.win.getScreenshot()
-            img = np.array(tex.getRamImageAs("RGB"))
-            img = img.reshape((tex.getYSize(), tex.getXSize(), 3))
-            img = np.flipud(img)  # Flip vertically
-            self.movie_writer.append_data(img)
-
+        tex = self.win.getScreenshot()
+        img = np.array(tex.getRamImageAs("RGB"))
+        img = img.reshape((tex.getYSize(), tex.getXSize(), 3))
+        img = np.flipud(img)  # Flip vertically
+        self.movie_writer.append_data(img)
         return Task.cont
 
     def particles_orbit_task(self, task):
@@ -1653,36 +1551,36 @@ class EarthOrbitApp(ShowBase):
 
         return Task.cont
 
-    def pulsate_orbit_line_task(self, task):
-        # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0
-        t = task.time
-        thickness = 2.0 + 6.0 * (0.5 + 0.5 * math.sin(t * 2.0))  # Pulsate every ~3 seconds
-        brightness = 1.0 #0.5 + 0.5 * math.sin(t * 2.0)
-        color = (brightness, brightness, 0, 1)
+    # def pulsate_orbit_line_task(self, task):
+    #     # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0
+    #     t = task.time
+    #     thickness = 2.0 + 6.0 * (0.5 + 0.5 * math.sin(t * 2.0))  # Pulsate every ~3 seconds
+    #     brightness = 1.0 #0.5 + 0.5 * math.sin(t * 2.0)
+    #     color = (brightness, brightness, 0, 1)
 
-        # Re-create the orbit line with new thickness/color
-        self.orbit_segs = LineSegs()
-        self.orbit_segs.setThickness(thickness)
-        self.orbit_segs.setColor(*color)
+    #     # Re-create the orbit line with new thickness/color
+    #     self.orbit_segs = LineSegs()
+    #     self.orbit_segs.setThickness(thickness)
+    #     self.orbit_segs.setColor(*color)
 
-        num_segments = 100
-        inclination = math.radians(45)
-        for i in range(num_segments + 1):
-            angle = 2 * math.pi * i / num_segments
-            x = self.orbit_radius * math.cos(angle)
-            y = self.orbit_radius * math.sin(angle)
-            z = 0
-            y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-            z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-            if i == 0:
-                self.orbit_segs.moveTo(x, y_incl, z_incl)
-            else:
-                self.orbit_segs.drawTo(x, y_incl, z_incl)
+    #     num_segments = 100
+    #     inclination = math.radians(45)
+    #     for i in range(num_segments + 1):
+    #         angle = 2 * math.pi * i / num_segments
+    #         x = self.orbit_radius * math.cos(angle)
+    #         y = self.orbit_radius * math.sin(angle)
+    #         z = 0
+    #         y_incl = y * math.cos(inclination) - z * math.sin(inclination)
+    #         z_incl = y * math.sin(inclination) + z * math.cos(inclination)
+    #         if i == 0:
+    #             self.orbit_segs.moveTo(x, y_incl, z_incl)
+    #         else:
+    #             self.orbit_segs.drawTo(x, y_incl, z_incl)
 
-        self.orbit_np.removeNode()
-        self.orbit_np = NodePath(self.orbit_segs.create())
-        self.orbit_np.reparentTo(self.render)
-        return Task.cont
+    #     self.orbit_np.removeNode()
+    #     self.orbit_np = NodePath(self.orbit_segs.create())
+    #     self.orbit_np.reparentTo(self.render)
+    #     return Task.cont
 
     def add_orbit_tube(self, radius=3.0, inclination_deg=20, tube_radius=0.07, num_segments=100, num_sides=12, eccentricity=0.0):
 
