@@ -668,3 +668,4 @@ class Body:
         self.grid_np.setLightOff()
         self.grid_np.setTwoSided(True)
         # self.grid_np.setDepthOffset(2)
+        self.grid_np.setDepthOffset(1)
