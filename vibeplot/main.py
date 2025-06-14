@@ -182,11 +182,16 @@ class EarthOrbitApp(ShowBase):
         # Lighting
 
         # Sunlight (directional)
+        # so it isn't really a point light. i don't think we can get shadows with a point light?
+        # so we update it to point to the center of the scene using a task.
         dlight = DirectionalLight("dlight")
         dlight.setColor((1, 1, 1, 1))
         dlnp = self.render.attachNewNode(dlight)
         # dlnp.setHpr(0, -60, 0)  # Or your desired sun direction
-        dlnp.setHpr(-10, 0, 0)  # Or your desired sun direction
+        # dlnp.setHpr(-10, 0, 0)  # Or your desired sun direction
+        # dlnp.setHpr(-10, -45, 0)  # Adjust direction as needed
+        self.render.setLight(dlnp)
+
         # sun_dir = dlnp.getQuat(self.render).getForward()
         self.dlnp = dlnp  # Store a reference for later use
 
@@ -339,15 +344,21 @@ class EarthOrbitApp(ShowBase):
             draw_3d_axes=True
         )
 
-        # self.sun = Body(
-        #             self,
-        #             name="Sun",
-        #             radius=SUN_RADIUS,
-        #             texture="models/2k_sun.jpg",
-        #             color=(1, 1, 0, 1),
-        #             draw_3d_axes=False
-        #         )
-        # self.sun._body.setLightOff()  # no shadowing on the sun!
+        self.sun = Body(
+                    self,
+                    name="Sun",
+                    radius=SUN_RADIUS,
+                    texture="models/2k_sun.jpg",
+                    color=(1, 1, 0, 1),
+                    draw_3d_axes=False
+                )
+        self.sun._body.setLightOff()  # no shadowing on the sun!
+
+        # trying to get the light to follow the sun.
+        # [it's a directionaly light, not a point light (which i couldn't get to work)]
+        # self.dlnp.reparentTo(self.sun._body)  # move light to the sun
+        # self.dlnp.setPos(0, 0, 0)
+        self.add_task(self.update_sunlight_direction, "UpdateSunlightDirection")
 
         self.mars = Body(
             self,
@@ -585,6 +596,12 @@ class EarthOrbitApp(ShowBase):
         self.draw_axis_grid()
         self.recenter_on_earth()  # start the animation centered on Earth
         self.setup_gui()  # set up the GUI buttons/slider/etc
+
+    def update_sunlight_direction(self, task):
+        sun_pos = self.sun._body.getPos(self.render)
+        self.dlnp.setPos(sun_pos)  # Move the light to the Sun's position (optional for DirectionalLight)
+        self.dlnp.lookAt(0, 0, 0)  # Point at the scene center
+        return Task.cont
 
     def _on_slider_drag_start(self, event):
         self.use_slider_time = True

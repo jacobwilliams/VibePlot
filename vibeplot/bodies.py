@@ -302,7 +302,15 @@ class Body:
             return np.array([0.0, 0.0, 0.0])
 
         elif self.name.lower() == "sun":
-            return np.array([-100.0, 0.0, 0.0])
+            # return np.array([-100.0, 0.0, 0.0])
+
+            sun_orbit_radius = EARTH_RADIUS * 10  # Distance from Earth center
+            sun_orbit_speed = 0.7  # radians per second
+            angle = et * sun_orbit_speed
+            x = sun_orbit_radius * math.cos(angle)
+            y = sun_orbit_radius * math.sin(angle)
+            z = 0
+            return np.array([x, y, z])
 
         # Moon orbits Earth
         elif self.name.lower() == "moon":
