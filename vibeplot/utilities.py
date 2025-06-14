@@ -1,7 +1,13 @@
 import math
 import random
-from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter,
-                          Geom, GeomNode, GeomTriangles, NodePath, Vec3)
+from panda3d.core import (GeomVertexFormat,
+                          GeomVertexData,
+                          GeomVertexWriter,
+                          Geom, GeomNode,
+                          GeomTriangles,
+                          NodePath,
+                          Vec3)
+
 
 def lonlat_to_xyz(lon, lat, radius):
     lon_rad = math.radians(lon)

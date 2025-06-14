@@ -234,6 +234,11 @@ class EarthOrbitApp(ShowBase):
 
         self.trackball_origin_task_ref = None
 
+        # list of the attributes in the scene:
+        # [note a site is a kind of body]
+        self.bodies = []
+        self.orbits = []
+
         self.earth = Body(
             self,
             name="Earth",
@@ -302,27 +307,29 @@ class EarthOrbitApp(ShowBase):
             groundtrack=False
         )
 
-        # self.orbits = []
-        # for i in range(18):
-        #     c = random_rgba()
-        #     name = f"S{i}"
-        #     s = Orbit(  parent=self,
-        #                 central_body=self.earth,
-        #                 name=name,
-        #                 radius=EARTH_RADIUS * 10.0,
-        #                 speed=2.0,
-        #                 inclination_deg=i*10,
-        #                 spline_mode="cubic",  # linear or cubic
-        #                 time_step = 0.1,       # can specify time step for resplining
-        #                 label_text=name,
-        #                 label_color=(1,1,1,1),
-        #                 color=c,
-        #                 satellite_color=c,
-        #                 thickness=2,
-        #                 satellite_radius=0.3,
-        #                 visibility_cone=False,
-        #                 groundtrack=False )
-        #     self.orbits.append(s)
+        self.orbits = []
+        for i in range(18):
+            c = random_rgba()
+            name = f"S{i}"
+            s = Orbit(  parent=self,
+                        central_body=self.earth,
+                        name=name,
+                        radius=EARTH_RADIUS * 10.0,
+                        speed=2.0,
+                        inclination_deg=i*10,
+                        spline_mode="cubic",  # linear or cubic
+                        time_step = 0.1,       # can specify time step for resplining
+                        label_text=name,
+                        label_size=0.8,
+                        label_color=(1,1,1,1),
+                        color=c,
+                        satellite_color=c,
+                        thickness=2,
+                        enable_shadow=False,
+                        satellite_radius=0.3,
+                        visibility_cone=False,
+                        groundtrack=False )
+            self.orbits.append(s)
 
         # put a site on the Earth:
         site_lat = 0.519 * RAD2DEG   # deg
@@ -648,38 +655,44 @@ class EarthOrbitApp(ShowBase):
         )
 
         # Add menu options as buttons
-        options = [
-            ("Earth (body-fixed)", self.focus_on_earth, False),
-            ("Earth (inertial)", self.focus_on_earth, True),
-            ("Moon (body-fixed)", self.focus_on_moon, False),
-            ("Moon (inertial)", self.focus_on_moon, True),
-            ("Mars (body-fixed)", self.focus_on_mars, False),
-            ("Mars (inertial)", self.focus_on_mars, True),
-            ("Venus (body-fixed)", self.focus_on_venus, False),
-            ("Venus (inertial)", self.focus_on_venus, True),
-            ("Site (body-fixed)", self.focus_on_site, False),
-            ("Site (inertial)", self.focus_on_site, True),
-            ("Venus-Mars frame", self.venus_mars_frame, True),
-            ("Close", self.menu_popup.destroy, None),
-        ]
+        # options = [
+        #     ("Earth (body-fixed)", self.focus_on_earth, False),
+        #     ("Earth (inertial)", self.focus_on_earth, True),
+        #     ("Moon (body-fixed)", self.focus_on_moon, False),
+        #     ("Moon (inertial)", self.focus_on_moon, True),
+        #     ("Mars (body-fixed)", self.focus_on_mars, False),
+        #     ("Mars (inertial)", self.focus_on_mars, True),
+        #     ("Venus (body-fixed)", self.focus_on_venus, False),
+        #     ("Venus (inertial)", self.focus_on_venus, True),
+        #     ("Site (body-fixed)", self.focus_on_site, False),
+        #     ("Site (inertial)", self.focus_on_site, True),
+        #     ("Venus-Mars frame", self.venus_mars_frame, True),
+        #     ("Close", self.menu_popup.destroy, None),
+        # ]
+
+        options = []
+        for b in self.bodies:
+            options.append((f"{b.name} (body-fixed)", self.setup_body_fixed_frame, (b, None, False, None)))
+            options.append((f"{b.name} (inertial)", self.setup_body_fixed_frame, (b, None, True, None)))
+        options.append(("Close", self.menu_popup.destroy, None))
 
         for i, (label, command, arg) in enumerate(options):
             if arg is None:
                 # If no argument, just use the command directly
                 DirectButton(
                     text=label,
-                    scale=0.06,
-                    pos=(0, 0, -0.3 + 0.3 - i * 0.15),
+                    scale=0.04,
+                    pos=(0, 0, -0.3 + 0.3 - i * 0.06),
                     command=command,
                     parent=self.menu_popup
                 )
             else:
                 DirectButton(
                     text=label,
-                    scale=0.06,
-                    pos=(0, 0, -0.3 + 0.3 - i * 0.15),
+                    scale=0.04,
+                    pos=(0, 0, -0.3 + 0.3 - i * 0.06),
                     command=command,
-                    extraArgs=[arg],
+                    extraArgs=arg,
                     parent=self.menu_popup
                 )
 
@@ -805,11 +818,14 @@ class EarthOrbitApp(ShowBase):
             └── trackball (at 0, view_distance, 0)
                 └── camera (we need to position this correctly)
         ```
-
         """
 
         if not view_distance:
-            view_distance = body.radius * 10.0
+            if isinstance(body, Site):
+                # a little closer for sites
+                view_distance = body.central_body.radius * 5.0
+            else:
+                view_distance = body.radius * 10.0
 
         # Remove any existing follow node or look-at tasks
         if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
@@ -852,7 +868,7 @@ class EarthOrbitApp(ShowBase):
 
             # Attach pivot to body's rotator
             self.camera_pivot.reparentTo(body._rotator)
-            self.camera_pivot.setHpr(180, 0, 0)
+            #self.camera_pivot.setHpr(180, 0, 0)
 
             # Parent camera to pivot
             self.camera.reparentTo(self.camera_pivot)
@@ -880,7 +896,7 @@ class EarthOrbitApp(ShowBase):
                 self.add_task(update_camera_look_at_task, "UpdateCameraLookAtTask")
             else:
                 # Default behavior: position camera and look at body center
-                self.camera.setPos(0, -view_distance, 0)
+                #self.camera.setPos(0, -view_distance, 0) # unnecesary?
                 self.camera.lookAt(0, 0, 0)
 
         # Update trackball position to match camera

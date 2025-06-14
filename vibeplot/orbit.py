@@ -15,6 +15,7 @@ class Orbit:
                  central_body: Body,
                  label_text: str = None,
                  label_color=(1,1,1,1),
+                 label_size=0.5,
                  radius: float = 5.0,
                  speed: float = 1.0,
                  inclination_deg: float = 0.0,
@@ -78,6 +79,7 @@ class Orbit:
         self.enable_shadow = enable_shadow
         self.label_text = label_text
         self.label_color = label_color
+        self.label_size = label_size
         self.label_np = None
 
         # Visibility cone settings
@@ -108,7 +110,7 @@ class Orbit:
             tn.setTextColor(*self.label_color)
             tn.setAlign(TextNode.ACenter)
             self.label_np = self.parent.render.attachNewNode(tn)
-            self.label_np.setScale(0.5)
+            self.label_np.setScale(self.label_size)
             self.label_np.setBillboardPointEye()
             self.label_np.setLightOff()
             self.label_np.setTransparency(True)
@@ -135,6 +137,9 @@ class Orbit:
 
         # Start the orbit task
         self.parent.add_task(self.orbit_task, f"{self.name}OrbitTask")
+
+        # add to the list of bodies in the scene:
+        self.parent.orbits.append(self)
 
     def _create_satellite(self):
         """Create the satellite geometry"""
@@ -420,6 +425,16 @@ class Orbit:
             # Offset label above the satellite
             label_pos = sat_pos_base_frame + Point3(0, 0, self.satellite_radius * 2)
             self.label_np.setPos(label_pos)
+
+            # Keep label a constant size on screen
+            cam = self.parent.cam if hasattr(self.parent, "cam") else None
+            if cam:
+                cam_pos = cam.getPos(self.parent.render)
+                dist = (label_pos - cam_pos).length()
+                # Adjust 0.5 to your preferred on-screen size
+                desired_screen_size = self.label_size
+                scale = desired_screen_size * dist / 30.0  # 30.0 is a tuning constant
+                self.label_np.setScale(scale)
 
         return Task.cont
 

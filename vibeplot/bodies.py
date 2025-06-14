@@ -191,6 +191,9 @@ class Body:
         # self._body.setTextureOff(1)  # <--- This disables texture inheritance
         # self._body.setTransparency(True)
 
+        # add to the list of bodies in the scene:
+        self.parent.bodies.append(self)
+
     def update_earth_shader_sundir_task(self, task):
         """Updates the shader's sun direction for the Earth.
 
@@ -588,20 +591,13 @@ class Body:
                         # Position the label next to the marker
                         label_offset = self.marker_size * 2.5
                         label_np.setPos(pt[0], pt[1], pt[2] + label_offset)
-
-                        # Scale the label appropriately
-                        label_np.setScale(0.2)
-
-                        # Make the label always face the camera
-                        label_np.setBillboardPointEye()
-
+                        label_np.setScale(0.2)  # Scale the label appropriately
+                        label_np.setBillboardPointEye()  # Make the label always face the camera
                         # Apply same properties as marker
                         label_np.setLightOff()
                         label_np.setTransparency(True)
-
                         # Store for cleanup
                         self.marker_labels.append(label_np)
-
 
                 # Create the trace line
                 self._trace_node.attachNewNode(segs.create())

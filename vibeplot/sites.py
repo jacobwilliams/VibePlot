@@ -7,7 +7,11 @@ import numpy as np
 
 
 class Site(Body):
-    """a site on the surface of a body"""
+    """a site on the surface of a body
+
+        Note that this is a type of body. may rethink this later.
+        probably it should be an Orbit type? Or they all should inherit from a common base class.
+    """
 
     def __init__(self, parent, name, central_body, lat_deg, lon_deg,
                  radius_offset=0.01, show_orbit: bool = True, **kwargs):
