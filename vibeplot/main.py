@@ -737,11 +737,17 @@ class EarthOrbitApp(ShowBase):
         )
 
         # View button, that shows a "menu" of buttons for the views:
-        self.menu_button = DirectButton(
+        self.view_button = DirectButton(
             text="View",
             scale=0.07,
             pos=(1.25, 0, 0.85),
             command=self.show_menu
+        )
+        self.pause_button = DirectButton(
+            text="Pause",
+            scale=0.07,
+            pos=(1.5, 0, 0.85),
+            command=self.toggle_scene_animation
         )
 
         # GUI elements:
@@ -960,6 +966,7 @@ class EarthOrbitApp(ShowBase):
         self.use_slider_time = False  # Enter manual time mode
         # self._updating_slider = False
         self.paused = False
+        self.sim_time = 0.0  # reset clock
 
         # Clean up tasks created by setup_body_fixed_frame
         if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
@@ -1497,10 +1504,9 @@ class EarthOrbitApp(ShowBase):
         fps = globalClock.getAverageFrameRate()
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         cpu = self.process.cpu_percent()
-        elapsed_time = self.get_et(task)
+        # elapsed_time = self.get_et(task)
         text_to_display = [f"FPS: {fps:.1f}",   # f"{now}",
                            f"Frame: {self.frame_count}",
-                           f"Time: {elapsed_time:.2f} s",
                            f"Mem: {mem_mb:.1f} MB",
                            f"CPU: {cpu:.1f}%"]
         self.hud_text.setText('\n'.join(text_to_display))
