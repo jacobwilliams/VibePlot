@@ -13,6 +13,7 @@ from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
 from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, DirectFrame
+from direct.gui import DirectGuiGlobals as DGG
 
 from .stars import constellations
 from .utilities import *
@@ -49,16 +50,22 @@ SUN_RADIUS = EARTH_RADIUS * 2
 MIN_LABEL_SCALE = 0  #0.05
 RAD2DEG = 180.0 / math.pi
 
+MAX_TIME = 100.0  # temp: this represents the max time of the mission
+
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
 
     def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = False):
         super().__init__()
 
+        self.task_list = []  # list of (task, name) tuples
+
+        # to keep track of sim time:
         self.use_slider_time = False
         self.paused = True  # if the scene is paused
-
         self.sim_time = 0.0  # This will be your time variable
+        self.sim_time_task = self.add_task(self.sim_time_update_task, "SimTimeTask")
+        # self._updating_slider = False
 
         self.setup_gui()
 
@@ -78,8 +85,6 @@ class EarthOrbitApp(ShowBase):
         self.last_mouse_move_time = 0
         self.prev_quat = None
         self.curr_quat = None
-
-        self.task_list = []  # list of (task, name) tuples
 
         # Set horizontal and vertical FOV in degrees
         self.camLens.setFov(60, 60)
@@ -322,7 +327,7 @@ class EarthOrbitApp(ShowBase):
                         time_step = 0.1,       # can specify time step for resplining
                         label_text=name,
                         label_size=0.8,
-                        label_color=(1,1,1,1),
+                        label_color=c, #(1,1,1,1),
                         color=c,
                         satellite_color=c,
                         thickness=2,
@@ -627,6 +632,30 @@ class EarthOrbitApp(ShowBase):
 
         self.recenter_on_earth()  # start the animation centered on Earth
 
+    def _on_slider_drag_start(self, event):
+        self.use_slider_time = True
+        self.paused = False
+
+    def _on_slider_drag_end(self, event):
+        self.paused = True
+        self.use_slider_time = False
+
+    def on_slider_change(self):
+        self.sim_time = float(self.time_slider['value'])
+        self.time_label["text"] = f"Time: {self.sim_time:.2f}"
+
+    def sim_time_update_task(self, task):
+        """Update the simulation time and GUI elements."""
+        if not self.use_slider_time:
+            if not self.paused:
+                self.sim_time += globalClock.getDt()
+                self.sim_time = self.sim_time % MAX_TIME
+                if hasattr(self, "time_slider"):
+                    self.time_slider['value'] = self.sim_time
+                if hasattr(self, "time_label"):
+                    self.time_label["text"] = f"Time: {self.sim_time:.2f}"
+        return Task.cont
+
     def pause_scene_animation(self):
         self.paused = True  # Set the pause flag to True
 
@@ -635,7 +664,6 @@ class EarthOrbitApp(ShowBase):
 
     def on_slider_change(self):
         self.sim_time = float(self.time_slider['value'])
-        self.use_slider_time = True  # Enter manual time mode
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
     def show_menu(self):
@@ -726,7 +754,7 @@ class EarthOrbitApp(ShowBase):
         )
 
         self.time_slider = DirectSlider(
-            range=(0, 100),  # Set min/max time as needed
+            range=(0, MAX_TIME),  # Set min/max time as needed
             value=self.sim_time,
             pageSize=1,      # How much to move per click
             scale=0.6,
@@ -734,6 +762,9 @@ class EarthOrbitApp(ShowBase):
             command=self.on_slider_change,
             parent=self.gui_frame
         )
+        # Bind to the thumb for drag start/end
+        self.time_slider.thumb.bind(DGG.B1PRESS, self._on_slider_drag_start)
+        self.time_slider.thumb.bind(DGG.B1RELEASE, self._on_slider_drag_end)
 
         self.time_label = DirectLabel(
             text="Time",
@@ -926,6 +957,9 @@ class EarthOrbitApp(ShowBase):
     def recenter_on_earth(self):
         """Reset to base render frame."""
         print("Reset")
+        self.use_slider_time = False  # Enter manual time mode
+        # self._updating_slider = False
+        self.paused = False
 
         # Clean up tasks created by setup_body_fixed_frame
         if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
@@ -1349,6 +1383,7 @@ class EarthOrbitApp(ShowBase):
 
         Pauses the animation if it is running, and resumes it if it is paused.
         """
+        self.use_slider_time = False  # Enter animation time mode
         if self.paused:
             self.resume_scene_animation()
         else:
@@ -1447,6 +1482,10 @@ class EarthOrbitApp(ShowBase):
         self.movie_writer.append_data(img)
         return Task.cont
 
+    def get_et(self, task=None) -> float:
+        """Returns the global simulation time."""
+        return self.sim_time
+
     def particles_orbit_task(self, task):
 
         if self.paused:  # Check the pause flag
@@ -1458,7 +1497,7 @@ class EarthOrbitApp(ShowBase):
         fps = globalClock.getAverageFrameRate()
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         cpu = self.process.cpu_percent()
-        elapsed_time = task.time
+        elapsed_time = self.get_et(task)
         text_to_display = [f"FPS: {fps:.1f}",   # f"{now}",
                            f"Frame: {self.frame_count}",
                            f"Time: {elapsed_time:.2f} s",
@@ -1468,7 +1507,7 @@ class EarthOrbitApp(ShowBase):
         # self.hud_text.setText(f"{now}\nFPS: {fps:.1f}")
         for i, particle in enumerate(self.particles):
             r, inclination, angle0, speed = self.particle_params[i]
-            angle = angle0 + task.time * speed
+            angle = angle0 + self.get_et(task) * speed
             x = r * math.cos(angle)
             y = r * math.sin(angle)
             z = 0
@@ -1765,7 +1804,8 @@ class EarthOrbitApp(ShowBase):
         t_min, t_max = times[0], times[-1]
 
         def orbit_anim_task(task):
-            t = (task.time * speed) % (t_max - t_min) + t_min if loop else min(task.time * speed + t_min, t_max)
+            et = self.get_et(task)
+            t = (et * speed) % (t_max - t_min) + t_min if loop else min(et * speed + t_min, t_max)
             # Find the segment
             for i in range(len(times) - 1):
                 if times[i] <= t <= times[i+1]:

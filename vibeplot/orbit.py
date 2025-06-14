@@ -395,7 +395,8 @@ class Orbit:
         # Compute parameter t for current time
         t_min, t_max = ts[0], ts[-1]
         total_time = t_max - t_min
-        t = (task.time * self.speed) % total_time + t_min if getattr(self, "trajectory_options", {}).get("loop", True) else min(task.time * self.speed + t_min, t_max)
+        et = self.parent.get_et(task)
+        t = (et * self.speed) % total_time + t_min if getattr(self, "trajectory_options", {}).get("loop", True) else min(et * self.speed + t_min, t_max)
 
         # Find the segment
         for i in range(n - 1):
@@ -515,7 +516,8 @@ class Orbit:
         t_min, t_max = times[0], times[-1]
 
         def orbit_anim_task(task):
-            t = (task.time * speed) % (t_max - t_min) + t_min if loop else min(task.time * speed + t_min, t_max)
+            et = self.parent.get_et(task)
+            t = (et * speed) % (t_max - t_min) + t_min if loop else min(et * speed + t_min, t_max)
             # Find the segment
             for i in range(len(times) - 1):
                 if times[i] <= t <= times[i+1]:

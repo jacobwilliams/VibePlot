@@ -487,8 +487,9 @@ class Body:
         if self.parent.paused:  # Check the pause flag
             return Task.cont  # Skip updates if paused
 
-        et = task.time
-        #et = self.parent.sim_time if self.parent.use_slider_time else task.time
+        #et = task.time
+        # et = self.parent.sim_time if self.parent.use_slider_time else task.time
+        et = self.parent.get_et(task)
 
         # Skip updates for sites    ---- this needs to be moved somewhere else....
         if self.__class__.__name__ != 'Site':

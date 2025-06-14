@@ -11,6 +11,13 @@ from panda3d.core import (GeomVertexFormat,
                           Point3)
 
 
+# lines styles are defined as (length, gap *[,length, gap])
+LINE_STYLES = [(1.0),                 # solid
+               (1.0, 1.0),            # dashed
+               (0.2, 0.3, 1.0, 0.3),  # dot-dash
+               (0.2, 1.0),            # dot
+               (2.0, 1.0)]            # long dash
+
 def lonlat_to_xyz(lon, lat, radius):
     lon_rad = math.radians(lon)
     lat_rad = math.radians(lat)
@@ -90,6 +97,8 @@ def create_arrow(shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radiu
     return arrow_np
 
 def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
+    """Create a sphere NodePath with specified radius, latitude and longitude divisions, and color."""
+
     format = GeomVertexFormat.getV3n3c4t2()
     vdata = GeomVertexData('sphere', format, Geom.UHStatic)
     vertex = GeomVertexWriter(vdata, 'vertex')
@@ -146,38 +155,47 @@ def draw_path(segs: LineSegs, pts, linestyle: int = 0):
     Args:
         segs (LineSegs): LineSegs object to draw on.
         pts (_type_): List of Point3 or Vec3 points to connect.
-        linestyle (int, optional): 0 for solid lines, 1 for dashed lines. Defaults to 0.
+        linestyle (int, optional): See `LINE_STYLES` for options.
+            0 for solid lines,
+            1 for dashed lines,
+            2 for dot-dash lines.
+            Defaults to 0.
     """
 
-    if linestyle == 1:
-        # dashed lines
-        dash_length = 1.0  # world units
-        gap_length = 1.0   # world units
-        drawing = True
-        current_dash_remaining = dash_length
-        for i in range(len(pts) - 1):
-            p0 = pts[i]
-            p1 = pts[i+1]
-            seg_vec = p1 - p0
-            seg_len = seg_vec.length()
-            seg_dir = seg_vec.normalized() if seg_len > 0 else Point3(0,0,0)
-            seg_pos = 0.0
-            while seg_pos < seg_len:
-                step = min(current_dash_remaining, seg_len - seg_pos)
-                p_start = p0 + seg_dir * seg_pos
-                p_end = p0 + seg_dir * (seg_pos + step)
-                if drawing:
-                    segs.moveTo(p_start)
-                    segs.drawTo(p_end)
-                seg_pos += step
-                current_dash_remaining -= step
-                if current_dash_remaining <= 0:
-                    drawing = not drawing
-                    current_dash_remaining = dash_length if drawing else gap_length
-    else:
+    if linestyle == 0:
         # solid lines
         for i, pt in enumerate(pts):
             if i == 0:
                 segs.moveTo(pt)
             else:
                 segs.drawTo(pt)
+        return
+
+    s = LINE_STYLES[linestyle]
+    pattern_len = len(s)
+    pattern_idx = 0
+    remaining = s[pattern_idx]
+    drawing = True
+
+    i = 0
+    while i < len(pts) - 1:
+        p0 = pts[i]
+        p1 = pts[i+1]
+        seg_vec = p1 - p0
+        seg_len = seg_vec.length()
+        seg_dir = seg_vec.normalized() if seg_len > 0 else Point3(0,0,0)
+        seg_pos = 0.0
+        while seg_pos < seg_len:
+            step = min(remaining, seg_len - seg_pos)
+            p_start = p0 + seg_dir * seg_pos
+            p_end = p0 + seg_dir * (seg_pos + step)
+            if drawing:
+                segs.moveTo(p_start)
+                segs.drawTo(p_end)
+            seg_pos += step
+            remaining -= step
+            if remaining <= 1e-8:
+                pattern_idx = (pattern_idx + 1) % pattern_len
+                remaining = s[pattern_idx]
+                drawing = not drawing
+        i += 1
