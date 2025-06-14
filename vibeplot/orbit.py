@@ -1,6 +1,6 @@
 import math
 from direct.task import Task
-from panda3d.core import Point3, LineSegs, NodePath, GeomNode, Geom, GeomVertexFormat, GeomVertexData, GeomVertexWriter, GeomTriangles, Vec3, TextNode
+from panda3d.core import Point3, LineSegs, NodePath, GeomNode, Geom, GeomVertexFormat, GeomVertexData, GeomVertexWriter, GeomTriangles, Vec3, TextNode, TransparencyAttrib
 import json5 as json
 import bisect
 from scipy.interpolate import CubicSpline
@@ -27,13 +27,15 @@ class Orbit:
                  cone_angle_deg: float = 5.0,
                  groundtrack: bool = True,
                  groundtrack_length: int = 1000,
+                 groundtrack_thickness: float = 2.0,
                  show_orbit_path: bool = True,
                  orbit_path_linestyle: int = 0,
                  num_segments: int = 100,
                  enable_shadow: bool = False,
                  spline_mode = "linear",
                  orbit_json: str = None,
-                 time_step: float = None):
+                 time_step: float = None,
+                 add_tube: bool = False):
         """
         Initialize an Orbit object representing a satellite or object orbiting a central body.
 
@@ -83,6 +85,7 @@ class Orbit:
         self.label_size = label_size
         self.label_np = None
         self.orbit_path_linestyle = orbit_path_linestyle  # 0: solid, 1: dashed
+        self.groundtrack_thickness = groundtrack_thickness
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -125,6 +128,9 @@ class Orbit:
         else:
             self.orbit_path_np = None
 
+        # to pulsate the orbit line:
+        # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
+
         # Setup visibility cone
         if self.visibility_cone_enabled:
             self.visibility_cone_np = self.parent.render.attachNewNode("visibility_cone")
@@ -139,6 +145,9 @@ class Orbit:
 
         # Start the orbit task
         self.parent.add_task(self.orbit_task, f"{self.name}OrbitTask")
+
+        if add_tube:
+            self.orbit_tube_np = self.add_orbit_tube(tube_radius=0.1 * self.thickness)
 
         # add to the list of bodies in the scene:
         self.parent.orbits.append(self)
@@ -365,7 +374,7 @@ class Orbit:
             # Draw the groundtrack
             self.groundtrack_node.node().removeAllChildren()
             segs = LineSegs()
-            segs.setThickness(2.0)
+            segs.setThickness(self.groundtrack_thickness)
             segs.setColor(self.color)
 
             for i, pt in enumerate(self.groundtrack_trace):
@@ -380,6 +389,70 @@ class Orbit:
             self.groundtrack_node.attachNewNode(segs.create())
             self.groundtrack_node.setTransparency(True)
             self.groundtrack_node.setLightOff()
+
+    def add_orbit_tube(self, tube_radius=0.2, num_sides=12, color=(1, 1, 1, 0.2)):
+        """
+        Draw a tube along the given path_points.
+        """
+        path_points = self._orbit_path_pts
+        num_segments = len(path_points) - 1
+        format = GeomVertexFormat.getV3n3c4()
+        vdata = GeomVertexData('tube', format, Geom.UHStatic)
+        vertex = GeomVertexWriter(vdata, 'vertex')
+        normal = GeomVertexWriter(vdata, 'normal')
+        color_writer = GeomVertexWriter(vdata, 'color')
+
+        verts = []
+        for i,center in enumerate(path_points):
+            # Tangent vector (direction of orbit)
+            if i < len(path_points) - 1:
+                tangent = (path_points[i+1] - center).normalized()
+            else:
+                tangent = (center - path_points[i-1]).normalized()
+            # Find a vector perpendicular to tangent
+            up = Vec3(0, 0, 1)
+            if abs(tangent.dot(up)) > 0.99:
+                up = Vec3(1, 0, 0)
+            side = tangent.cross(up).normalized()
+            up = side.cross(tangent).normalized()
+
+            ring = []
+            for j in range(num_sides):
+                theta = 2 * math.pi * j / num_sides
+                offset = side * math.cos(theta) * tube_radius + up * math.sin(theta) * tube_radius
+                pos = center + offset
+                vertex.addData3(pos)
+                normal.addData3(offset.normalized())
+                color_writer.addData4(*color)
+                ring.append(i * num_sides + j)
+            verts.append(ring)
+
+        # Build triangles
+        tris = GeomTriangles(Geom.UHStatic)
+        for i in range(num_segments):
+            for j in range(num_sides):
+                a_idx = i * num_sides + j
+                b_idx = i * num_sides + (j + 1) % num_sides
+                c_idx = (i + 1) * num_sides + j
+                d_idx = (i + 1) * num_sides + (j + 1) % num_sides
+                tris.addVertices(a_idx, b_idx, c_idx)
+                tris.addVertices(b_idx, d_idx, c_idx)
+
+        geom = Geom(vdata)
+        geom.addPrimitive(tris)
+        node = GeomNode('orbit_tube')
+        node.addGeom(geom)
+        tube_np = self.parent.render.attachNewNode(node)
+
+        tube_np.setTransparency(True)
+        # tube_np.setTwoSided(True)
+        # tube_np.setBin('opaque', 20)
+        tube_np.setLightOff()
+        tube_np.setShaderOff()
+
+        tube_np.setTransparency(TransparencyAttrib.M_alpha)
+
+        return tube_np
 
     def orbit_task(self, task):
         """Main orbit animation task (satellite moves smoothly along the path)."""
@@ -529,3 +602,34 @@ class Orbit:
             return task.cont if (loop or t < t_max) else task.done
 
         self.parent.add_task(orbit_anim_task, "OrbitAnimTask")
+
+    # def pulsate_orbit_line_task(self, task):
+    #     # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0
+    #     t = task.time
+    #     thickness = 2.0 + 6.0 * (0.5 + 0.5 * math.sin(t * 2.0))  # Pulsate every ~3 seconds
+    #     brightness = 1.0 #0.5 + 0.5 * math.sin(t * 2.0)
+    #     color = (brightness, brightness, 0, 1)
+
+    #     # Re-create the orbit line with new thickness/color
+    #     self.orbit_segs = LineSegs()
+    #     self.orbit_segs.setThickness(thickness)
+    #     self.orbit_segs.setColor(*color)
+
+    #     num_segments = 100
+    #     inclination = math.radians(45)
+    #     for i in range(num_segments + 1):
+    #         angle = 2 * math.pi * i / num_segments
+    #         x = self.orbit_radius * math.cos(angle)
+    #         y = self.orbit_radius * math.sin(angle)
+    #         z = 0
+    #         y_incl = y * math.cos(inclination) - z * math.sin(inclination)
+    #         z_incl = y * math.sin(inclination) + z * math.cos(inclination)
+    #         if i == 0:
+    #             self.orbit_segs.moveTo(x, y_incl, z_incl)
+    #         else:
+    #             self.orbit_segs.drawTo(x, y_incl, z_incl)
+
+    #     self.orbit_np.removeNode()
+    #     self.orbit_np = NodePath(self.orbit_segs.create())
+    #     self.orbit_np.reparentTo(self.render)
+    #     return Task.cont

@@ -14,6 +14,7 @@ from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
 from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, DirectFrame
 from direct.gui import DirectGuiGlobals as DGG
+from direct.gui.DirectOptionMenu import DirectOptionMenu
 
 from .stars import constellations
 from .utilities import *
@@ -37,6 +38,9 @@ loadPrcFileData('', 'multisamples 4')
 loadPrcFileData('', 'window-title VibePlot')
 # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
 loadPrcFileData('', 'gl-include-points-size true')
+
+# loadPrcFileData('', 'win-size 1920 1080')
+# loadPrcFileData('', 'win-origin 0 0')
 
 STAR_SPHERE_RADIUS = 100  # Radius of the star sphere in Panda3D units
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
@@ -62,12 +66,11 @@ class EarthOrbitApp(ShowBase):
 
         # to keep track of sim time:
         self.use_slider_time = False
-        self.paused = True  # if the scene is paused
+        self.pause_scene_animation()
         self.sim_time = 0.0  # This will be your time variable
         self.sim_time_task = self.add_task(self.sim_time_update_task, "SimTimeTask")
-        # self._updating_slider = False
 
-        self.setup_gui()
+        # self.setup_gui()
 
         # self.render.setScale(1)
         # self.camLens.setNear(1000)
@@ -267,7 +270,8 @@ class EarthOrbitApp(ShowBase):
             color=(1, 0, 0, 1),
             satellite_color=(0.8, 0.8, 1, 1),
             visibility_cone=True,
-            groundtrack=True
+            groundtrack=True,
+            add_tube=True
         )
 
         self.equatorial_satellite = Orbit(
@@ -528,24 +532,6 @@ class EarthOrbitApp(ShowBase):
         self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
         self.satellite.reparentTo(self.render)
 
-        self.groundtrack_trace = []
-        self.groundtrack_length = 1000  # Number of points to keep in the groundtrack
-        self.groundtrack_node = self.earth._rotator.attachNewNode("groundtrack")
-        self.groundtrack_node.setShaderOff()
-        self.groundtrack_node.setLightOff()
-        self.groundtrack_node.setTwoSided(True)
-
-        # --- Visibility cone setup ---
-        self.visibility_cone_np = self.render.attachNewNode("visibility_cone")
-        self.visibility_cone_angle = math.radians(5)  # cone half-angle in radians
-        self.visibility_cone_segments = 24  # smoothness of the cone
-
-        # to pulsate the orbit line:
-        # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
-
-        # self.orbit_tube_np = self.add_orbit_tube(radius=5.0, inclination_deg=20, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.2)
-        # self.orbit_tube_np2 = self.add_orbit_tube(radius=4.0, inclination_deg=45, tube_radius=0.03, num_segments=100, num_sides=16, eccentricity=0.3)
-
         # --- Example particles ---
         self.particles = []
         self.particle_params = []
@@ -632,12 +618,14 @@ class EarthOrbitApp(ShowBase):
 
         self.recenter_on_earth()  # start the animation centered on Earth
 
+        self.setup_gui()
+
     def _on_slider_drag_start(self, event):
         self.use_slider_time = True
-        self.paused = False
+        self.resume_scene_animation()
 
     def _on_slider_drag_end(self, event):
-        self.paused = True
+        self.pause_scene_animation()
         self.use_slider_time = False
 
     def on_slider_change(self):
@@ -658,72 +646,17 @@ class EarthOrbitApp(ShowBase):
 
     def pause_scene_animation(self):
         self.paused = True  # Set the pause flag to True
+        if hasattr(self, 'pause_button'):
+            self.pause_button['text'] = "Resume"
 
     def resume_scene_animation(self):
         self.paused = False  # Set the pause flag to False
+        if hasattr(self, 'pause_button'):
+            self.pause_button['text'] = "Pause"
 
     def on_slider_change(self):
         self.sim_time = float(self.time_slider['value'])
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
-
-    def show_menu(self):
-
-        # Remove old menu if it exists
-        if hasattr(self, 'menu_popup') and self.menu_popup:
-            self.menu_popup.destroy()
-            self.menu_popup = None
-            return
-
-        aspect = self.getAspectRatio()
-
-        # Create a popup frame for the menu
-        self.menu_popup = DirectFrame(
-            frameColor=(0, 0, 0, 0.8),
-            frameSize=(-aspect, aspect, -0.15, 0.15),  # full width, adjust height as needed
-            pos=(0, 0, 0.85),  # Centered at top of window
-        )
-
-        # Add menu options as buttons
-        # options = [
-        #     ("Earth (body-fixed)", self.focus_on_earth, False),
-        #     ("Earth (inertial)", self.focus_on_earth, True),
-        #     ("Moon (body-fixed)", self.focus_on_moon, False),
-        #     ("Moon (inertial)", self.focus_on_moon, True),
-        #     ("Mars (body-fixed)", self.focus_on_mars, False),
-        #     ("Mars (inertial)", self.focus_on_mars, True),
-        #     ("Venus (body-fixed)", self.focus_on_venus, False),
-        #     ("Venus (inertial)", self.focus_on_venus, True),
-        #     ("Site (body-fixed)", self.focus_on_site, False),
-        #     ("Site (inertial)", self.focus_on_site, True),
-        #     ("Venus-Mars frame", self.venus_mars_frame, True),
-        #     ("Close", self.menu_popup.destroy, None),
-        # ]
-
-        options = []
-        for b in self.bodies:
-            options.append((f"{b.name} (body-fixed)", self.setup_body_fixed_frame, (b, None, False, None)))
-            options.append((f"{b.name} (inertial)", self.setup_body_fixed_frame, (b, None, True, None)))
-        options.append(("Close", self.menu_popup.destroy, None))
-
-        for i, (label, command, arg) in enumerate(options):
-            if arg is None:
-                # If no argument, just use the command directly
-                DirectButton(
-                    text=label,
-                    scale=0.04,
-                    pos=(0, 0, -0.3 + 0.3 - i * 0.06),
-                    command=command,
-                    parent=self.menu_popup
-                )
-            else:
-                DirectButton(
-                    text=label,
-                    scale=0.04,
-                    pos=(0, 0, -0.3 + 0.3 - i * 0.06),
-                    command=command,
-                    extraArgs=arg,
-                    parent=self.menu_popup
-                )
 
     def setup_gui(self):
         """Add some GUI elements for interaction."""
@@ -736,27 +669,46 @@ class EarthOrbitApp(ShowBase):
             pos=(0, 0, 0.85),  # Centered at top of window
         )
 
-        # View button, that shows a "menu" of buttons for the views:
-        self.view_button = DirectButton(
+        # Build options list and a mapping from label to function/args
+        self.menu_options = []
+        self.menu_callbacks = {}
+        for b in self.bodies:
+            label_fixed = f"{b.name} (body-fixed)"
+            label_inertial = f"{b.name} (inertial)"
+            self.menu_options.append(label_inertial)
+            self.menu_options.append(label_fixed)
+            self.menu_callbacks[label_fixed] = (self.setup_body_fixed_frame, (b, None, False, None))
+            self.menu_callbacks[label_inertial] = (self.setup_body_fixed_frame, (b, None, True, None))
+        label_fixed = 'Venus-Mars frame'
+        self.menu_options.append(label_fixed)
+        self.menu_callbacks[label_fixed] = (self.venus_mars_frame, (True,))
+
+        # Create the DirectOptionMenu
+        self.view_menu = DirectOptionMenu(
             text="View",
             scale=0.07,
-            pos=(1.0, 0, 0),
-            command=self.show_menu,
-            parent=self.gui_frame
+            items=self.menu_options,
+            initialitem=0,
+            highlightColor=(0.65, 0.65, 0.65, 1),
+            pos=(0.9, 0, 0.1),  # Adjust position as needed
+            parent=self.gui_frame,
+            command=self._on_menu_select
         )
         self.pause_button = DirectButton(
             text="Pause",
             scale=0.07,
             pos=(1.21, 0, 0),
             command=self.toggle_scene_animation,
-            parent=self.gui_frame
+            parent=self.gui_frame,
+            frameSize=(-1.8, 1.8, -0.6, 0.6)
         )
         self.my_button = DirectButton(
             text="Reset",
             scale=0.07,
-            pos=(1.42, 0, 0),
+            pos=(1.5, 0, 0),
             command=self.recenter_on_earth,
-            parent=self.gui_frame
+            parent=self.gui_frame,
+            frameSize=(-1.8, 1.8, -0.6, 0.6)
         )
 
         self.time_slider = DirectSlider(
@@ -775,11 +727,17 @@ class EarthOrbitApp(ShowBase):
         self.time_label = DirectLabel(
             text="Time",
             scale=0.07,
-            pos=(0.7, 0, 0),  # Right side of the frame
+            pos=(0.67, 0, 0),  # X, Y, Z
             text_fg=(1, 1, 1, 1),  # White text
             text_bg=(0, 0, 0, 1),
-            parent=self.gui_frame
+            parent=self.gui_frame,
+            text_align=TextNode.ALeft
         )
+
+    def _on_menu_select(self, selected_label):
+        func, args = self.menu_callbacks.get(selected_label, (None, ()))
+        if func:
+            func(*args)
 
     def setup_base_frame(self):
         """Restore camera and trackball to their original working setup."""
@@ -962,10 +920,10 @@ class EarthOrbitApp(ShowBase):
 
     def recenter_on_earth(self):
         """Reset to base render frame."""
+
         print("Reset")
         self.use_slider_time = False  # Enter manual time mode
-        # self._updating_slider = False
-        self.paused = False
+        self.resume_scene_animation()
         self.sim_time = 0.0  # reset clock
 
         # Clean up tasks created by setup_body_fixed_frame
@@ -986,6 +944,10 @@ class EarthOrbitApp(ShowBase):
 
         self.resume_scene_animation()
         self.setup_base_frame()
+
+        # --- Reset the menu selection to Earth (inertial) ---
+        if hasattr(self, "view_menu"):
+            self.view_menu.set(self.menu_options[0])
 
     def focus_on_earth(self, follow_without_rotation: bool = False):
         self.earth.setup_body_fixed_camera(follow_without_rotation=follow_without_rotation)
@@ -1371,20 +1333,6 @@ class EarthOrbitApp(ShowBase):
             print(f"Task '{name}' already exists.")
             return False
 
-    # def pause_scene_animation(self):
-    #     if self.scene_anim_running:
-    #         for func, name in self.task_list:
-    #             self.taskMgr.remove(name)
-    #         # keep the task list intact, so we can resume later
-    #         self.scene_anim_running = False
-
-    # def resume_scene_animation(self):
-    #     if not self.scene_anim_running:
-    #         # Re-add all tasks (with correct function references)
-    #         for func, name in self.task_list:
-    #             self.add_task(func, name)
-    #         self.scene_anim_running = True
-
     def toggle_scene_animation(self):
         """Toggles the animation state of the scene.
 
@@ -1393,13 +1341,8 @@ class EarthOrbitApp(ShowBase):
         self.use_slider_time = False  # Enter animation time mode
         if self.paused:
             self.resume_scene_animation()
-            #self.pause_button['text'] = "Pause"
         else:
             self.pause_scene_animation()
-            #self.pause_button['text'] = "Go"
-
-        # note would have to set Pause/Unpause text
-        # in various other places when the scene is paused or resumed...
 
     def line_intersects_sphere(self, p1, p2, sphere_center, sphere_radius):
         # p1, p2: endpoints of the line (Point3)
@@ -1617,111 +1560,6 @@ class EarthOrbitApp(ShowBase):
         self.site_lines_np.setLightOff()  # Add this line
 
         return Task.cont
-
-    # def pulsate_orbit_line_task(self, task):
-    #     # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0
-    #     t = task.time
-    #     thickness = 2.0 + 6.0 * (0.5 + 0.5 * math.sin(t * 2.0))  # Pulsate every ~3 seconds
-    #     brightness = 1.0 #0.5 + 0.5 * math.sin(t * 2.0)
-    #     color = (brightness, brightness, 0, 1)
-
-    #     # Re-create the orbit line with new thickness/color
-    #     self.orbit_segs = LineSegs()
-    #     self.orbit_segs.setThickness(thickness)
-    #     self.orbit_segs.setColor(*color)
-
-    #     num_segments = 100
-    #     inclination = math.radians(45)
-    #     for i in range(num_segments + 1):
-    #         angle = 2 * math.pi * i / num_segments
-    #         x = self.orbit_radius * math.cos(angle)
-    #         y = self.orbit_radius * math.sin(angle)
-    #         z = 0
-    #         y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-    #         z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-    #         if i == 0:
-    #             self.orbit_segs.moveTo(x, y_incl, z_incl)
-    #         else:
-    #             self.orbit_segs.drawTo(x, y_incl, z_incl)
-
-    #     self.orbit_np.removeNode()
-    #     self.orbit_np = NodePath(self.orbit_segs.create())
-    #     self.orbit_np.reparentTo(self.render)
-    #     return Task.cont
-
-    def add_orbit_tube(self, radius=3.0, inclination_deg=20, tube_radius=0.07, num_segments=100, num_sides=12, eccentricity=0.0):
-
-        inclination = math.radians(inclination_deg)
-        a = radius
-        e = eccentricity
-        b = a * math.sqrt(1 - e * e)
-        # Prepare vertex data
-        format = GeomVertexFormat.getV3n3c4()
-        vdata = GeomVertexData('tube', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color = GeomVertexWriter(vdata, 'color')
-
-        verts = []
-        for i in range(num_segments + 1):
-            angle = 2 * math.pi * i / num_segments
-            # Elliptical orbit, centered at focus
-            x = a * math.cos(angle) - a * e
-            y = b * math.sin(angle)
-            z = 0
-            # Incline orbit
-            y_incl = y * math.cos(inclination) - z * math.sin(inclination)
-            z_incl = y * math.sin(inclination) + z * math.cos(inclination)
-            center = Vec3(x, y_incl, z_incl)
-
-            # Tangent vector (direction of orbit)
-            next_angle = 2 * math.pi * ((i+1)%num_segments) / num_segments
-            x2 = a * math.cos(next_angle) - a * e
-            y2 = b * math.sin(next_angle)
-            z2 = 0
-            y2_incl = y2 * math.cos(inclination) - z2 * math.sin(inclination)
-            z2_incl = y2 * math.sin(inclination) + z2 * math.cos(inclination)
-            next_center = Vec3(x2, y2_incl, z2_incl)
-            tangent = (next_center - center).normalized()
-
-            # Find a vector perpendicular to tangent
-            up = Vec3(0, 0, 1)
-            if abs(tangent.dot(up)) > 0.99:
-                up = Vec3(1, 0, 0)
-            side = tangent.cross(up).normalized()
-            up = side.cross(tangent).normalized()
-
-            ring = []
-            for j in range(num_sides):
-                theta = 2 * math.pi * j / num_sides
-                offset = side * math.cos(theta) * tube_radius + up * math.sin(theta) * tube_radius
-                pos = center + offset
-                vertex.addData3(pos)
-                normal.addData3(offset.normalized())
-                color.addData4(0, 1, 1, 0.5)  # Cyan tube
-                ring.append(i * num_sides + j)
-            verts.append(ring)
-
-        # Build triangles
-        tris = GeomTriangles(Geom.UHStatic)
-        for i in range(num_segments):
-            for j in range(num_sides):
-                a_idx = i * num_sides + j
-                b_idx = i * num_sides + (j + 1) % num_sides
-                c_idx = (i + 1) * num_sides + j
-                d_idx = (i + 1) * num_sides + (j + 1) % num_sides
-                tris.addVertices(a_idx, b_idx, c_idx)
-                tris.addVertices(b_idx, d_idx, c_idx)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('orbit_tube')
-        node.addGeom(geom)
-        tube_np = self.render.attachNewNode(node)
-        tube_np.setTransparency(True)
-        tube_np.setTwoSided(True)
-        tube_np.setBin('opaque', 10)
-        return tube_np
 
     def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
         """Draw a translucent torus (belt) around the Earth."""
