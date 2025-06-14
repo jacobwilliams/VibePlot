@@ -302,7 +302,7 @@ class Body:
             return np.array([0.0, 0.0, 0.0])
 
         elif self.name.lower() == "sun":
-            return np.array([0.0, -10.0, 0.0])
+            return np.array([-100.0, 0.0, 0.0])
 
         # Moon orbits Earth
         elif self.name.lower() == "moon":

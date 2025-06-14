@@ -24,7 +24,7 @@ from .sites import Site
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
-                          Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3,
+                          Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3, PointLight,
                           loadPrcFileData, LineSegs,
                           CardMaker, TransparencyAttrib,
                           WindowProperties, TextNode,
@@ -38,7 +38,6 @@ loadPrcFileData('', 'multisamples 4')
 loadPrcFileData('', 'window-title VibePlot')
 # loadPrcFileData('', 'window-type none')  # Prevent Panda3D from opening its own window
 loadPrcFileData('', 'gl-include-points-size true')
-
 # loadPrcFileData('', 'win-size 1920 1080')
 # loadPrcFileData('', 'win-origin 0 0')
 
@@ -53,8 +52,8 @@ VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 SUN_RADIUS = EARTH_RADIUS * 2
 MIN_LABEL_SCALE = 0  #0.05
 RAD2DEG = 180.0 / math.pi
+MAX_TIME = 100.0  # temp: this represents the max time of the mission [will be user input: min/max]
 
-MAX_TIME = 100.0  # temp: this represents the max time of the mission
 
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
@@ -70,16 +69,6 @@ class EarthOrbitApp(ShowBase):
         self.sim_time = 0.0  # This will be your time variable
         self.sim_time_task = self.add_task(self.sim_time_update_task, "SimTimeTask")
 
-        # self.setup_gui()
-
-        # self.render.setScale(1)
-        # self.camLens.setNear(1000)
-        # self.camLens.setFar(1e8)
-
-        # Initialize tracking variables
-        self.tracked_body = None
-        self.tracked_distance = 0
-        self.tracking_task = None
         # Task for tracking mouse during drag
         self.mouse_task = None
         # Task for inertial movement
@@ -95,6 +84,9 @@ class EarthOrbitApp(ShowBase):
         # To zoom in (narrower view), decrease the FOV (e.g., 30).
         # self.camLens.setNear(0.1)
         # self.camLens.setFar(1000)
+        # self.render.setScale(1)
+        # self.camLens.setNear(1000)
+        # self.camLens.setFar(1e8)
 
         # update aspect ratio
         width = self.win.getProperties().getXSize()
@@ -109,9 +101,6 @@ class EarthOrbitApp(ShowBase):
         self.setup_base_frame()
         self.add_task(self.update_body_fixed_camera_task, "UpdateBodyFixedCamera")
 
-        # Set up custom zoom controls
-        #self.setup_zoom_controls()
-
         if parent_window is not None:
             props = WindowProperties()
             props.setParentWindow(parent_window)
@@ -120,12 +109,10 @@ class EarthOrbitApp(ShowBase):
             self.openDefaultWindow(props=props)
 
         self.process = psutil.Process(os.getpid())
-        self.process.cpu_percent()  # Initialize CPU usage
 
+        # Add key bindings:
         self.accept("space", self.recenter_on_earth)
         self.accept("a", self.toggle_scene_animation)  # Press 'a' to toggle all animation
-
-        # Add key bindings for switching camera focus
         self.accept("1", self.focus_on_earth)
         self.accept("shift-1", self.focus_on_earth, extraArgs=[True])
         self.accept("2", self.focus_on_moon)
@@ -136,10 +123,7 @@ class EarthOrbitApp(ShowBase):
         self.accept("shift-4", self.focus_on_venus, extraArgs=[True])
         self.accept("5", self.focus_on_site)
         self.accept("shift-5", self.focus_on_site, extraArgs=[True])
-
         self.accept("6", self.venus_mars_frame)  # test. center on venus but look at mars
-
-        self.scene_anim_running = True
 
         # messenger.toggleVerbose()  # Enable verbose messenger output
         # self.accept("*", self.event_logger)  # debugging, log all events
@@ -154,14 +138,7 @@ class EarthOrbitApp(ShowBase):
         self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
 
         # Add mouse handlers
-        # self.ignore("option-mouse1")
-        # self.ignore("option-mouse1-up")
-        # self.ignore("alt-mouse1")
-        # self.ignore("alt-mouse1-up")
-        # self.ignore("shift-mouse1")
-        # self.ignore("shift-mouse1-up")
         self.accept("mouse1", self.stop_inertia)
-        # Add mouse handlers - use option key name for Mac compatibility
         self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
         self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
         # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
@@ -178,10 +155,10 @@ class EarthOrbitApp(ShowBase):
         )
         self.frame_count = 0
 
+        # Star sphere [should be in a separate class]
         if USE_STAR_IMAGE:
             # Star background (sky sphere)
             self.stars = self.loader.loadModel("models/planet_sphere")
-            # self.stars.reparentTo(self.render)
             self.stars.reparentTo(self.camera)
             self.stars.setPos(0, 0, 0)
             self.stars.setScale(1000, 1000, 1000)
@@ -195,13 +172,11 @@ class EarthOrbitApp(ShowBase):
             self.stars.setTexture(star_tex, 1)
         else:
             self.win.setClearColor((0, 0, 0, 1))  # black background
-
         # self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
         self.add_stars("models/hygdata_v41.csv", num_stars=500)
         #self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
         self.draw_constellations()
         self.draw_sky_grid(sphere_radius=STAR_SPHERE_RADIUS)
-
         self.add_task(self.update_star_sphere, "UpdateStarSphere")
 
         # Lighting
@@ -212,10 +187,9 @@ class EarthOrbitApp(ShowBase):
         dlnp = self.render.attachNewNode(dlight)
         # dlnp.setHpr(0, -60, 0)  # Or your desired sun direction
         dlnp.setHpr(-10, 0, 0)  # Or your desired sun direction
-        sun_dir = dlnp.getQuat(self.render).getForward()
+        # sun_dir = dlnp.getQuat(self.render).getForward()
         self.dlnp = dlnp  # Store a reference for later use
 
-        #######################
         # Enable shadow mapping
         self.render.setShaderAuto()
         self.render.setAntialias(AntialiasAttrib.MAuto)
@@ -225,7 +199,6 @@ class EarthOrbitApp(ShowBase):
         self.dlnp.node().setShadowBufferSize(2048)  # Shadow buffer resolution (single value)
         # Enable shadows globally
         self.render.setShaderAuto()
-        #######################
 
         # Neutral ambient for the rest
         neutral_ambient = AmbientLight("neutral_ambient")
@@ -239,8 +212,6 @@ class EarthOrbitApp(ShowBase):
         # light for the axis arrows:
         self.arrow_ambient = AmbientLight("arrow_ambient")
         self.arrow_ambient.setColor((0.4, 0.4, 0.4, 1))
-
-        self.trackball_origin_task_ref = None
 
         # list of the attributes in the scene:
         # [note a site is a kind of body]
@@ -604,10 +575,7 @@ class EarthOrbitApp(ShowBase):
 
         self.add_task(self.particles_orbit_task, "ParticlesOrbitTask")
 
-        self.manifold_np = None
-
-        # self.setup_mouse_picker()
-
+        # movie recording:
         self.record_movie = False
         self.movie_writer = None
         self.movie_filename = "output.mp4"
@@ -615,10 +583,8 @@ class EarthOrbitApp(ShowBase):
         self.accept("r", self.toggle_movie_recording)
 
         self.draw_axis_grid()
-
         self.recenter_on_earth()  # start the animation centered on Earth
-
-        self.setup_gui()
+        self.setup_gui()  # set up the GUI buttons/slider/etc
 
     def _on_slider_drag_start(self, event):
         self.use_slider_time = True
@@ -1364,66 +1330,6 @@ class EarthOrbitApp(ShowBase):
         t2 = (-b + discriminant) / (2 * a)
         # Check if intersection is within the segment
         return (0 <= t1 <= 1) or (0 <= t2 <= 1)
-
-    def draw_translucent_manifold(self, points, tube_radius=0.15, num_sides=16, color=(0.2, 0.8, 1, 0.25)):
-        """Draw a translucent tube (manifold) around a list of 3D points."""
-        if len(points) < 2:
-            return None
-
-        format = GeomVertexFormat.getV3n3c4()
-        vdata = GeomVertexData('manifold', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color_writer = GeomVertexWriter(vdata, 'color')
-
-        rings = []
-        for i, p in enumerate(points):
-            # Compute tangent
-            if i == 0:
-                tangent = (points[i+1] - p).normalized()
-            elif i == len(points) - 1:
-                tangent = (p - points[i-1]).normalized()
-            else:
-                tangent = (points[i+1] - points[i-1]).normalized()
-            # Find a vector perpendicular to tangent
-            up = Vec3(0, 0, 1)
-            if abs(tangent.dot(up)) > 0.99:
-                up = Vec3(1, 0, 0)
-            side = tangent.cross(up).normalized()
-            up = side.cross(tangent).normalized()
-
-            fade_alpha = (i + 1) / len(points)  # 0 (oldest) to 1 (newest)
-            ring = []
-            for j in range(num_sides):
-                theta = 2 * math.pi * j / num_sides
-                offset = side * math.cos(theta) * tube_radius + up * math.sin(theta) * tube_radius
-                pos = p + offset
-                vertex.addData3(pos)
-                normal.addData3(offset.normalized())
-                color_writer.addData4(color[0], color[1], color[2], color[3] * fade_alpha)
-                ring.append(i * num_sides + j)
-            rings.append(ring)
-
-        # Build triangles
-        tris = GeomTriangles(Geom.UHStatic)
-        for i in range(len(points) - 1):
-            for j in range(num_sides):
-                a = i * num_sides + j
-                b = i * num_sides + (j + 1) % num_sides
-                c = (i + 1) * num_sides + j
-                d = (i + 1) * num_sides + (j + 1) % num_sides
-                tris.addVertices(a, b, c)
-                tris.addVertices(b, d, c)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('manifold')
-        node.addGeom(geom)
-        manifold_np = self.render.attachNewNode(node)
-        manifold_np.setTransparency(True)
-        manifold_np.setTwoSided(True)
-        manifold_np.setBin('transparent', 10)
-        return manifold_np
 
     def movie_writer_task(self, task):
         """Task to capture frames for movie recording."""
