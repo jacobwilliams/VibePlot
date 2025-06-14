@@ -304,7 +304,8 @@ class EarthOrbitApp(ShowBase):
             thickness=5,
             satellite_radius=0.3,
             visibility_cone=False,
-            groundtrack=False
+            groundtrack=False,
+            orbit_path_linestyle = 1
         )
 
         self.orbits = []

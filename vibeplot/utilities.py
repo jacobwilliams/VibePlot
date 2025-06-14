@@ -6,7 +6,9 @@ from panda3d.core import (GeomVertexFormat,
                           Geom, GeomNode,
                           GeomTriangles,
                           NodePath,
-                          Vec3)
+                          Vec3,
+                          LineSegs,
+                          Point3)
 
 
 def lonlat_to_xyz(lon, lat, radius):
@@ -137,3 +139,45 @@ def random_rgba(alpha=1.0):
         tuple: (r, g, b, a) with r, g, b in [0, 1] and a as specified.
     """
     return (random.random(), random.random(), random.random(), alpha)
+
+def draw_path(segs: LineSegs, pts, linestyle: int = 0):
+    """Draw a path using LineSegs.
+
+    Args:
+        segs (LineSegs): LineSegs object to draw on.
+        pts (_type_): List of Point3 or Vec3 points to connect.
+        linestyle (int, optional): 0 for solid lines, 1 for dashed lines. Defaults to 0.
+    """
+
+    if linestyle == 1:
+        # dashed lines
+        dash_length = 1.0  # world units
+        gap_length = 1.0   # world units
+        drawing = True
+        current_dash_remaining = dash_length
+        for i in range(len(pts) - 1):
+            p0 = pts[i]
+            p1 = pts[i+1]
+            seg_vec = p1 - p0
+            seg_len = seg_vec.length()
+            seg_dir = seg_vec.normalized() if seg_len > 0 else Point3(0,0,0)
+            seg_pos = 0.0
+            while seg_pos < seg_len:
+                step = min(current_dash_remaining, seg_len - seg_pos)
+                p_start = p0 + seg_dir * seg_pos
+                p_end = p0 + seg_dir * (seg_pos + step)
+                if drawing:
+                    segs.moveTo(p_start)
+                    segs.drawTo(p_end)
+                seg_pos += step
+                current_dash_remaining -= step
+                if current_dash_remaining <= 0:
+                    drawing = not drawing
+                    current_dash_remaining = dash_length if drawing else gap_length
+    else:
+        # solid lines
+        for i, pt in enumerate(pts):
+            if i == 0:
+                segs.moveTo(pt)
+            else:
+                segs.drawTo(pt)

@@ -7,7 +7,7 @@ from scipy.interpolate import CubicSpline
 import numpy as np
 
 from .bodies import Body
-from .utilities import create_sphere
+from .utilities import create_sphere, draw_path
 
 class Orbit:
     def __init__(self, parent,
@@ -28,6 +28,7 @@ class Orbit:
                  groundtrack: bool = True,
                  groundtrack_length: int = 1000,
                  show_orbit_path: bool = True,
+                 orbit_path_linestyle: int = 0,
                  num_segments: int = 100,
                  enable_shadow: bool = False,
                  spline_mode = "linear",
@@ -81,6 +82,7 @@ class Orbit:
         self.label_color = label_color
         self.label_size = label_size
         self.label_np = None
+        self.orbit_path_linestyle = orbit_path_linestyle  # 0: solid, 1: dashed
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -243,12 +245,7 @@ class Orbit:
         pts = [self.get_orbit_state(t) for t in ts]   #self.sample_orbit_path(ts)
         self._orbit_path_ts = ts
         self._orbit_path_pts = pts
-
-        for i, pt in enumerate(pts):
-            if i == 0:
-                orbit_segs.moveTo(pt)
-            else:
-                orbit_segs.drawTo(pt)
+        draw_path(orbit_segs, pts, linestyle = self.orbit_path_linestyle)
 
         orbit_np = NodePath(orbit_segs.create())
         orbit_np.reparentTo(self.parent.render)
