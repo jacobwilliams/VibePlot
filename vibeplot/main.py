@@ -740,21 +740,21 @@ class EarthOrbitApp(ShowBase):
         self.view_button = DirectButton(
             text="View",
             scale=0.07,
-            pos=(1.25, 0, 0.85),
-            command=self.show_menu
+            pos=(1.0, 0, 0),
+            command=self.show_menu,
+            parent=self.gui_frame
         )
         self.pause_button = DirectButton(
             text="Pause",
             scale=0.07,
-            pos=(1.5, 0, 0.85),
-            command=self.toggle_scene_animation
+            pos=(1.21, 0, 0),
+            command=self.toggle_scene_animation,
+            parent=self.gui_frame
         )
-
-        # GUI elements:
         self.my_button = DirectButton(
             text="Reset",
             scale=0.07,
-            pos=(1.0, 0, 0),  # Left side of the frame
+            pos=(1.42, 0, 0),
             command=self.recenter_on_earth,
             parent=self.gui_frame
         )
@@ -1393,8 +1393,13 @@ class EarthOrbitApp(ShowBase):
         self.use_slider_time = False  # Enter animation time mode
         if self.paused:
             self.resume_scene_animation()
+            #self.pause_button['text'] = "Pause"
         else:
             self.pause_scene_animation()
+            #self.pause_button['text'] = "Go"
+
+        # note would have to set Pause/Unpause text
+        # in various other places when the scene is paused or resumed...
 
     def line_intersects_sphere(self, p1, p2, sphere_center, sphere_radius):
         # p1, p2: endpoints of the line (Point3)
