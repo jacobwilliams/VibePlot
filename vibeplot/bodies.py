@@ -669,3 +669,166 @@ class Body:
         self.grid_np.setTwoSided(True)
         # self.grid_np.setDepthOffset(2)
         self.grid_np.setDepthOffset(1)
+
+    # def add_saturn_rings(self, inner_radius=EARTH_RADIUS*1.2,
+    #                      outer_radius=EARTH_RADIUS*3.0,
+    #                      inclination_deg=10, num_rings=5,
+    #                      transparency=0.6):
+    #     """Create Saturn-like ring system around Earth"""
+
+    #     # Create parent node for all rings
+    #     ring_system = self.render.attachNewNode("ring_system")
+
+    #     # Apply inclination to the entire ring system
+    #     ring_system.setP(inclination_deg)
+
+    #     # Create multiple rings with gaps
+    #     ring_width = (outer_radius - inner_radius) / (num_rings * 2 - 1)
+
+    #     for i in range(num_rings):
+    #         # Calculate this ring's inner and outer radius
+    #         ring_inner = inner_radius + i * ring_width * 2
+    #         ring_outer = ring_inner + ring_width
+
+    #         # Vary color slightly for each ring
+    #         base_color = (0.8, 0.75, 0.6, transparency)  # Sandy color
+    #         color_variation = 0.1 * (i / num_rings)
+    #         ring_color = (
+    #             base_color[0] - color_variation,
+    #             base_color[1] - color_variation,
+    #             base_color[2] - color_variation,
+    #             base_color[3]
+    #         )
+
+    #         # Create the ring
+    #         ring = self.create_flat_ring(
+    #             inner_radius=ring_inner,
+    #             outer_radius=ring_outer,
+    #             color=ring_color,
+    #             segments=120,
+    #             num_subdivisions=8
+    #         )
+
+    #         ring.reparentTo(ring_system)
+    #         ring.setTwoSided(True)
+    #         ring.setTransparency(True)
+    #         ring.setBin('transparent', 30)
+
+    #     # Parent to Earth so it follows Earth's rotation
+    #     ring_system.reparentTo(self.earth)
+    #     # Also set these on the parent node to be extra sure
+    #     ring_system.setTextureOff(1)
+    #     ring_system.setShaderOff(1)
+
+    #     return ring_system
+
+    # def create_flat_ring(self, inner_radius, outer_radius, color, segments=64, num_subdivisions=4):
+    #     """Create a flat ring with triangles for better texture mapping"""
+
+    #     format = GeomVertexFormat.getV3n3c4t2()
+    #     vdata = GeomVertexData('ring', format, Geom.UHStatic)
+    #     vertex = GeomVertexWriter(vdata, 'vertex')
+    #     normal = GeomVertexWriter(vdata, 'normal')
+    #     color_writer = GeomVertexWriter(vdata, 'color')
+    #     texcoord = GeomVertexWriter(vdata, 'texcoord')
+
+    #     tris = GeomTriangles(Geom.UHStatic)
+
+    #     # Create vertices for the ring
+    #     for i in range(segments + 1):
+    #         angle = 2 * math.pi * i / segments
+    #         cos_angle = math.cos(angle)
+    #         sin_angle = math.sin(angle)
+
+    #         # Create multiple subdivisions from inner to outer radius
+    #         for j in range(num_subdivisions + 1):
+    #             # Calculate radius for this subdivision
+    #             r = inner_radius + (outer_radius - inner_radius) * j / num_subdivisions
+
+    #             x = r * cos_angle
+    #             y = r * sin_angle
+    #             z = 0  # Flat ring
+
+    #             # Add vertex
+    #             vertex.addData3(x, y, z)
+    #             normal.addData3(0, 0, 1)  # Normal points up
+    #             color_writer.addData4(*color)
+    #             texcoord.addData2(i / segments, j / num_subdivisions)
+
+    #     # Create triangles
+    #     for i in range(segments):
+    #         for j in range(num_subdivisions):
+    #             # First triangle
+    #             v1 = i * (num_subdivisions + 1) + j
+    #             v2 = (i + 1) * (num_subdivisions + 1) + j
+    #             v3 = i * (num_subdivisions + 1) + (j + 1)
+    #             tris.addVertices(v1, v2, v3)
+
+    #             # Second triangle
+    #             v1 = (i + 1) * (num_subdivisions + 1) + j
+    #             v2 = (i + 1) * (num_subdivisions + 1) + (j + 1)
+    #             v3 = i * (num_subdivisions + 1) + (j + 1)
+    #             tris.addVertices(v1, v2, v3)
+
+    #     geom = Geom(vdata)
+    #     geom.addPrimitive(tris)
+    #     node = GeomNode('ring')
+    #     node.addGeom(geom)
+
+    #     return NodePath(node)
+
+    # def rotate_rings_task(self, task):
+    #     self.rings.setH(self.rings.getH() + 0.01)  # Slow rotation
+    #     return Task.cont
+
+    # def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
+    #     """Draw a translucent torus (belt) around the Earth."""
+
+    #     format = GeomVertexFormat.getV3n3c4()
+    #     vdata = GeomVertexData('belt', format, Geom.UHStatic)
+    #     vertex = GeomVertexWriter(vdata, 'vertex')
+    #     normal = GeomVertexWriter(vdata, 'normal')
+    #     color = GeomVertexWriter(vdata, 'color')
+
+    #     verts = []
+    #     major_radius = (inner_radius + outer_radius) / 2
+    #     minor_radius = (outer_radius - inner_radius) / 2
+
+    #     for i in range(num_major + 1):
+    #         phi = 2 * math.pi * i / num_major
+    #         center = Vec3(major_radius * math.cos(phi), major_radius * math.sin(phi), 0)
+    #         for j in range(num_minor + 1):
+    #             theta = 2 * math.pi * j / num_minor
+    #             # Local circle in XZ plane
+    #             x = (major_radius + minor_radius * math.cos(theta)) * math.cos(phi)
+    #             y = (major_radius + minor_radius * math.cos(theta)) * math.sin(phi)
+    #             z = minor_radius * math.sin(theta)
+    #             pos = Vec3(x, y, z)
+    #             n = (pos - center).normalized()
+    #             vertex.addData3(pos)
+    #             normal.addData3(n)
+    #             color.addData4(*belt_color)
+    #             verts.append((i, j))
+
+    #     # Build triangles
+    #     tris = GeomTriangles(Geom.UHStatic)
+    #     for i in range(num_major):
+    #         for j in range(num_minor):
+    #             a = i * (num_minor + 1) + j
+    #             b = ((i + 1) % (num_major + 1)) * (num_minor + 1) + j
+    #             c = ((i + 1) % (num_major + 1)) * (num_minor + 1) + (j + 1)
+    #             d = i * (num_minor + 1) + (j + 1)
+    #             tris.addVertices(a, b, d)
+    #             tris.addVertices(b, c, d)
+
+    #     geom = Geom(vdata)
+    #     geom.addPrimitive(tris)
+    #     node = GeomNode('radiation_belt')
+    #     node.addGeom(geom)
+    #     belt_np = self.render.attachNewNode(node)
+    #     belt_np.setTransparency(True)
+    #     belt_np.setTwoSided(True)
+    #     belt_np.setBin('transparent', 20)
+    #     return belt_np
+
+

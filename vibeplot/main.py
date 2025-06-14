@@ -16,7 +16,7 @@ from direct.gui.DirectGui import DirectButton, DirectSlider, DirectLabel, Direct
 from direct.gui import DirectGuiGlobals as DGG
 from direct.gui.DirectOptionMenu import DirectOptionMenu
 
-from .stars import constellations
+from .stars import Stars
 from .utilities import *
 from .bodies import Body
 from .orbit import Orbit
@@ -41,13 +41,9 @@ loadPrcFileData('', 'gl-include-points-size true')
 # loadPrcFileData('', 'win-size 1920 1080')
 # loadPrcFileData('', 'win-origin 0 0')
 
-STAR_SPHERE_RADIUS = 100  # Radius of the star sphere in Panda3D units
 EARTH_RADIUS = 2.0  # Radius of Earth in Panda3D units
 MOON_RADIUS = EARTH_RADIUS / 4.0  # Radius of Moon in Panda3D units
 MARS_RADIUS = EARTH_RADIUS / 3.0  # Radius of Mars in Panda3D units
-# STARMAP_IMAGE = 'models/epsilon_nebulae_texture_by_amras_arfeiniel.jpg'
-STARMAP_IMAGE = 'models/2k_stars.jpg'
-USE_STAR_IMAGE = False
 VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 SUN_RADIUS = EARTH_RADIUS * 2
 MIN_LABEL_SCALE = 0  #0.05
@@ -95,7 +91,8 @@ class EarthOrbitApp(ShowBase):
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
 
-        self.star_sphere_np = self.render.attachNewNode("star_sphere")
+        # self.star_sphere_np = self.render.attachNewNode("star_sphere")
+        self.stars = Stars(self, star_database="models/hygdata_v41.csv")
 
         # Initialize in base frame at startup
         self.setup_base_frame()
@@ -154,30 +151,6 @@ class EarthOrbitApp(ShowBase):
             mayChange=True
         )
         self.frame_count = 0
-
-        # Star sphere [should be in a separate class]
-        if USE_STAR_IMAGE:
-            # Star background (sky sphere)
-            self.stars = self.loader.loadModel("models/planet_sphere")
-            self.stars.reparentTo(self.camera)
-            self.stars.setPos(0, 0, 0)
-            self.stars.setScale(1000, 1000, 1000)
-            self.stars.setTwoSided(True)  # Render inside of sphere
-            self.stars.setCompass()
-            self.stars.setBin('background', 0)
-            self.stars.setDepthWrite(False)
-            self.stars.setLightOff()
-            self.stars.setCompass()  # Keep stars stationary relative to camera
-            star_tex = self.loader.loadTexture(STARMAP_IMAGE)
-            self.stars.setTexture(star_tex, 1)
-        else:
-            self.win.setClearColor((0, 0, 0, 1))  # black background
-        # self.add_stars("models/Stars_HYGv3.txt", num_stars=500)
-        self.add_stars("models/hygdata_v41.csv", num_stars=500)
-        #self.add_stars_as_points("models/Stars_HYGv3.txt", num_stars=200)
-        self.draw_constellations()
-        self.draw_sky_grid(sphere_radius=STAR_SPHERE_RADIUS)
-        self.add_task(self.update_star_sphere, "UpdateStarSphere")
 
         # Lighting
 
@@ -323,18 +296,6 @@ class EarthOrbitApp(ShowBase):
         self.site = Site(parent=self, name = 'site', central_body=self.earth, lat_deg=site_lat, lon_deg=site_lon, radius_offset=0.001, radius=0.01, color=(1,0,0,0.5))  #, show_axes=False, axes_length=0.2, label=None, label_color=(1,1,1,1))
         self.site_lines_np = None
 
-        # just a test:
-        #self.add_radiation_belt(inner_radius=EARTH_RADIUS*1.5, outer_radius=EARTH_RADIUS*2.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24)
-
-        # self.rings = self.add_saturn_rings(
-        #                     inner_radius=EARTH_RADIUS*1.2,
-        #                     outer_radius=EARTH_RADIUS*2.8,
-        #                     inclination_deg=15,  # Tilt the rings
-        #                     num_rings=7,         # More rings for detail
-        #                     transparency=0.7     # Slightly transparent
-        #                 )
-        # self.add_task(self.rotate_rings_task, "RotateRingsTask")
-
         self.moon = Body(
             self,
             name="Moon",
@@ -440,37 +401,6 @@ class EarthOrbitApp(ShowBase):
                 groundtrack=False,
                 enable_shadow=False
             )
-
-
-        # # --- Add a satellite orbiting the Moon ---
-        # self.moon_satellite_orbit_radius = 2 * MOON_RADIUS  # Distance from Moon center
-        # self.moon_satellite_orbit_speed = 2.0  # radians per second (relative to Moon)
-        # self.moon_satellite = create_sphere(radius=0.1, num_lat=16, num_lon=32, color=(1, 1, 0, 1))
-        # self.moon_satellite.reparentTo(self.moon._body)  # Parent to the Moon so it follows Moon's orbit
-        # self.add_task(self.moon_satellite_orbit_task, "MoonSatelliteOrbitTask")
-        # # --- Visualize the satellite's orbit path around the Moon ---
-        # moon_orbit_segs = LineSegs()
-        # moon_orbit_segs.setThickness(2)
-        # moon_orbit_segs.setColor(1, 0.5, 0, 1)  # Orange
-        # segments = 100
-        # self.moon_satellite_inclination = math.radians(30)  # 30 degree inclination
-        # for i in range(segments + 1):
-        #     angle = 2 * math.pi * i / segments
-        #     x = self.moon_satellite_orbit_radius * math.cos(angle)
-        #     y = self.moon_satellite_orbit_radius * math.sin(angle)
-        #     z = 0
-        #     # Apply inclination (rotation around X axis)
-        #     y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
-        #     z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
-        #     if i == 0:
-        #         moon_orbit_segs.moveTo(x, y_incl, z_incl)
-        #     else:
-        #         moon_orbit_segs.drawTo(x, y_incl, z_incl)
-        # self.moon_satellite_orbit_np = self.moon._body.attachNewNode(moon_orbit_segs.create())
-        # # self.moon_satellite_orbit_np.setTransparency(True)
-        # self.moon_satellite_orbit_np.setLightOff()
-        # self.moon_satellite.setTextureOff(1)  # so it doesn't use the moon texture
-        # self.moon_satellite.setShaderOff(1)
 
         if draw_plane:
             # --- Equatorial plane (square, translucent) ---
@@ -769,7 +699,8 @@ class EarthOrbitApp(ShowBase):
         self.trackball.node().setOrigin(Point3(0, 0, 0))
 
         # Change star sphere parent to render
-        self.star_sphere_np.reparentTo(self.render)
+        if self.stars:
+            self.stars.star_sphere_np.reparentTo(self.render)
 
     def update_body_fixed_camera_task(self, task):
         """When in body-fixed mode, adjust the view parameters if needed."""
@@ -1482,455 +1413,5 @@ class EarthOrbitApp(ShowBase):
         self.site_lines_np.setTransparency(True)
         self.site_lines_np.setLightOff()  # Add this line
 
-        return Task.cont
-
-    def add_radiation_belt(self, inner_radius=2.5, outer_radius=3.5, belt_color=(0.2, 1, 0.2, 0.18), num_major=100, num_minor=24):
-        """Draw a translucent torus (belt) around the Earth."""
-
-        format = GeomVertexFormat.getV3n3c4()
-        vdata = GeomVertexData('belt', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color = GeomVertexWriter(vdata, 'color')
-
-        verts = []
-        major_radius = (inner_radius + outer_radius) / 2
-        minor_radius = (outer_radius - inner_radius) / 2
-
-        for i in range(num_major + 1):
-            phi = 2 * math.pi * i / num_major
-            center = Vec3(major_radius * math.cos(phi), major_radius * math.sin(phi), 0)
-            for j in range(num_minor + 1):
-                theta = 2 * math.pi * j / num_minor
-                # Local circle in XZ plane
-                x = (major_radius + minor_radius * math.cos(theta)) * math.cos(phi)
-                y = (major_radius + minor_radius * math.cos(theta)) * math.sin(phi)
-                z = minor_radius * math.sin(theta)
-                pos = Vec3(x, y, z)
-                n = (pos - center).normalized()
-                vertex.addData3(pos)
-                normal.addData3(n)
-                color.addData4(*belt_color)
-                verts.append((i, j))
-
-        # Build triangles
-        tris = GeomTriangles(Geom.UHStatic)
-        for i in range(num_major):
-            for j in range(num_minor):
-                a = i * (num_minor + 1) + j
-                b = ((i + 1) % (num_major + 1)) * (num_minor + 1) + j
-                c = ((i + 1) % (num_major + 1)) * (num_minor + 1) + (j + 1)
-                d = i * (num_minor + 1) + (j + 1)
-                tris.addVertices(a, b, d)
-                tris.addVertices(b, c, d)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('radiation_belt')
-        node.addGeom(geom)
-        belt_np = self.render.attachNewNode(node)
-        belt_np.setTransparency(True)
-        belt_np.setTwoSided(True)
-        belt_np.setBin('transparent', 20)
-        return belt_np
-
-    def load_orbit_from_json(self, filename):
-        with open(filename, "r") as f:
-            data = json.load(f)
-        options = data.get("options", {})
-        traj = data["trajectory"]
-        points = [Point3(p["x"], p["y"], p["z"]) for p in traj]
-        times = [p.get("t", i) for i, p in enumerate(traj)]
-        return points, times, options
-
-    def add_orbit_from_json(self, filename, color=(1, 0, 1, 1), thickness=2.0):
-        points, times, options = self.load_orbit_from_json(filename)
-        # Draw the orbit
-        segs = LineSegs()
-        segs.setThickness(thickness)
-        segs.setColor(*color)
-        for i, pt in enumerate(points):
-            if i == 0:
-                segs.moveTo(pt)
-            else:
-                segs.drawTo(pt)
-        orbit_np = self.render.attachNewNode(segs.create())
-        orbit_np.setTransparency(True)
-        orbit_np.setBin('opaque', 20)
-
-        # Animate if requested
-        if options.get("animate", False):
-            self.animate_orbit_satellite(points, times, options)
-        return orbit_np
-
-    def animate_orbit_satellite(self, points, times, options):
-        # Create a satellite model if not already present
-        if not hasattr(self, "orbit_satellite"):
-            self.orbit_satellite = self.loader.loadModel("models/planet_sphere")
-            self.orbit_satellite.setScale(0.12)
-            self.orbit_satellite.setColor(1, 0, 1, 1)
-            self.orbit_satellite.reparentTo(self.render)
-
-        speed = options.get("speed", 1.0)
-        loop = options.get("loop", True)
-        t_min, t_max = times[0], times[-1]
-
-        def orbit_anim_task(task):
-            et = self.get_et(task)
-            t = (et * speed) % (t_max - t_min) + t_min if loop else min(et * speed + t_min, t_max)
-            # Find the segment
-            for i in range(len(times) - 1):
-                if times[i] <= t <= times[i+1]:
-                    # Linear interpolation
-                    alpha = (t - times[i]) / (times[i+1] - times[i])
-                    pos = points[i] * (1 - alpha) + points[i+1] * alpha
-                    self.orbit_satellite.setPos(pos)
-                    break
-            return task.cont if (loop or t < t_max) else task.done
-
-        self.add_task(orbit_anim_task, "OrbitAnimTask")
-
-    # def moon_satellite_orbit_task(self, task):
-
-    #     if self.paused:  # Check the pause flag
-    #         return Task.cont  # Skip updates if paused
-
-    #     angle = task.time * self.moon_satellite_orbit_speed
-    #     x = self.moon_satellite_orbit_radius * math.cos(angle)
-    #     y = self.moon_satellite_orbit_radius * math.sin(angle)
-    #     z = 0
-    #     # Apply inclination (rotation around X axis)
-    #     y_incl = y * math.cos(self.moon_satellite_inclination) - z * math.sin(self.moon_satellite_inclination)
-    #     z_incl = y * math.sin(self.moon_satellite_inclination) + z * math.cos(self.moon_satellite_inclination)
-    #     self.moon_satellite.setPos(x, y_incl, z_incl)
-    #     return Task.cont
-
-    def add_stars(self, filename="models/Stars_HYGv3.txt", num_stars=100):
-        """this one draws stars as spheres. this is not as efficient, but
-        seems to work."""
-        # Read the star data
-        stars = []
-        if os.path.splitext(filename)[1] == '.txt':
-            delimiter = '\t'
-        else:
-            delimiter = ','
-        with open(filename, newline='') as csvfile:
-            reader = csv.DictReader(csvfile, delimiter=delimiter)
-            for row in reader:
-                try:
-                    ra = float(row['ra'])
-                    dec = float(row['dec'])
-                    mag = float(row['mag'])
-                    ci = float(row.get('ci', 0.0))  # Color index, default to 0.0 if missing
-                    name = row.get('proper', '')
-                    if name.lower().strip() == 'sol':  # skip the Sun
-                        continue
-                    stars.append({'ra': ra, 'dec': dec, 'mag': mag, 'ci': ci, 'name': name})
-                except Exception:
-                    continue  # skip malformed lines
-
-        # Sort by magnitude (lower is brighter)
-        stars = sorted(stars, key=lambda s: s['mag'])
-        stars = stars[:num_stars]
-
-        # Place each star on a celestial sphere of large radius
-        self.star_positions = {}
-        for star in stars:
-            ra = star['ra'] * 15  # convert hours to degrees
-            dec = star['dec']
-            mag = star['mag']
-            ci = star['ci']
-            # Color mapping by color index (ci)
-            if ci <= 0.0:
-                color = (0.6, 0.8, 1.0, 1)  # blue-white
-            elif ci <= 0.3:
-                color = (0.7, 0.85, 1.0, 1)  # white-blue
-            elif ci <= 0.6:
-                color = (1.0, 1.0, 1.0, 1)   # white
-            elif ci <= 1.0:
-                color = (1.0, 1.0, 0.7, 1)   # yellow-white
-            elif ci <= 1.5:
-                color = (1.0, 0.8, 0.6, 1)   # orange
-            else:
-                color = (1.0, 0.6, 0.6, 1)   # red
-            # Convert to radians
-            ra_rad = math.radians(ra)
-            dec_rad = math.radians(dec)
-            # Spherical to Cartesian
-            x = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.cos(ra_rad)
-            y = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.sin(ra_rad)
-            z = STAR_SPHERE_RADIUS * math.sin(dec_rad)
-            self.star_positions[star['name'].strip().lower()] = (x, y, z)
-            # Scale star size by magnitude (smaller mag = bigger)
-            size = max(0.05, 0.25 - 0.04 * (mag + 1.5))
-            #color = (1, 0, 0, 1)  # white, or use color index if desired
-            star_np = create_sphere(radius=size, num_lat=6, num_lon=12, color=color)
-            star_np.setPos(x, y, z)
-            # star_np.reparentTo(self.render)
-            star_np.reparentTo(self.star_sphere_np)
-            star_np.setLightOff()
-            star_np.setTransparency(True)
-            if mag < 100.0 and star['name']:
-                text_node = TextNode('star_label')
-                text_node.setText(star['name'])
-                text_node.setTextColor(color)
-                text_node.setAlign(TextNode.ACenter)
-                text_np = star_np.attachNewNode(text_node)
-                text_np.setScale(0.9)  # Adjust size as needed
-                text_np.setPos(0, 0, size * 2.5)  # Offset above the star
-                text_np.setBillboardAxis()  # Make label always face the camera
-
-    def draw_constellations(self):
-        for name, star_list in constellations.items():
-            segs = LineSegs()
-            segs.setThickness(1.0)
-            segs.setColor(1, 1, 0.5, 0.3)  # Light yellow
-            for i in range(len(star_list) - 1):
-                s1 = star_list[i].strip().lower()
-                s2 = star_list[i + 1].strip().lower()
-                if s1 in self.star_positions and s2 in self.star_positions:
-                    segs.moveTo(*self.star_positions[s1])
-                    segs.drawTo(*self.star_positions[s2])
-            constellation_np = self.star_sphere_np.attachNewNode(segs.create())
-            constellation_np.setLightOff()
-            constellation_np.setTransparency(True)
-
-    def update_star_sphere(self, task):
-        # Always center the star sphere on the camera, in the star sphere's parent space
-        self.star_sphere_np.setPos(self.star_sphere_np.getParent(), self.camera.getPos(self.star_sphere_np.getParent()))
-        return Task.cont
-
-    def add_stars_as_points(self, filename : str = "models/Stars_HYGv3.txt", num_stars : int = 100):
-        """this one draws stars as points, but they are squares on mac since
-        i can't get the shader thing to work right."""
-        # --- Custom vertex format with per-point size ---
-        array = GeomVertexArrayFormat()
-        array.addColumn("vertex", 3, Geom.NTFloat32, Geom.CPoint)
-        array.addColumn("color", 4, Geom.NTFloat32, Geom.CColor)
-        array.addColumn("size", 1, Geom.NTFloat32, Geom.COther)
-        format = GeomVertexFormat()
-        format.addArray(array)
-        format = GeomVertexFormat.registerFormat(format)
-        vdata = GeomVertexData('stars', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        color_writer = GeomVertexWriter(vdata, 'color')
-        size_writer = GeomVertexWriter(vdata, 'size')
-
-        # --- Read and sort stars ---
-        stars = []
-        with open(filename, newline='') as csvfile:
-            reader = csv.DictReader(csvfile, delimiter='\t')
-            for row in reader:
-                try:
-                    ra = float(row['ra'])
-                    dec = float(row['dec'])
-                    mag = float(row['mag'])
-                    ci = float(row['ci'])
-                    stars.append({'ra': ra, 'dec': dec, 'mag': mag, 'ci': ci})
-                except Exception:
-                    continue
-        stars = sorted(stars, key=lambda s: s['mag'])[:num_stars]
-
-        # --- Write star data ---
-        for star in stars:
-            ra = star['ra'] * 15
-            dec = star['dec']
-            mag = star['mag']
-            ci = star['ci']
-            size = max(4.0, 16.0 - 2.5 * (mag + 1.5)) / 4.0
-            if ci <= 0.0:
-                color = (0.6, 0.8, 1.0, 1)
-            elif ci <= 0.3:
-                color = (0.7, 0.85, 1.0, 1)
-            elif ci <= 0.6:
-                color = (1.0, 1.0, 1.0, 1)
-            elif ci <= 1.0:
-                color = (1.0, 1.0, 0.7, 1)
-            elif ci <= 1.5:
-                color = (1.0, 0.8, 0.6, 1)
-            else:
-                color = (1.0, 0.6, 0.6, 1)
-            ra_rad = math.radians(ra)
-            dec_rad = math.radians(dec)
-            x = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.cos(ra_rad)
-            y = STAR_SPHERE_RADIUS * math.cos(dec_rad) * math.sin(ra_rad)
-            z = STAR_SPHERE_RADIUS * math.sin(dec_rad)
-            vertex.addData3(x, y, z)
-            color_writer.addData4f(*color)
-            size_writer.addData1f(size)
-
-        points = GeomPoints(Geom.UHStatic)
-        for i in range(len(stars)):
-            points.addVertex(i)
-        points.closePrimitive()
-
-        geom = Geom(vdata)
-        geom.addPrimitive(points)
-        node = GeomNode('star_points')
-        node.addGeom(geom)
-
-        stars_np = self.camera.attachNewNode(node)
-        stars_np.setBin('background', 0)
-        stars_np.setDepthWrite(False)
-        stars_np.setLightOff()
-        stars_np.setCompass()
-        stars_np.setTransparency(True)
-
-        # this doesn't work on the mac:
-        #stars_np.setShader(Shader.load(Shader.SL_GLSL, "models/star_point.vert", "models/star_point.frag"))
-
-    def draw_sky_grid(self, sphere_radius=100, ra_lines=24, dec_lines=12):
-        """Draws a right ascension/declination grid on the celestial sphere."""
-        grid = LineSegs()
-        grid.setThickness(1.0)
-        grid.setColor(0.4, 0.7, 1, 0.3)  # Light blue, semi-transparent
-
-        # Declination lines (horizontal circles)
-        for i in range(1, dec_lines):
-            dec = -90 + 180 * i / dec_lines  # from -90 to +90
-            dec_rad = math.radians(dec)
-            z = sphere_radius * math.sin(dec_rad)
-            r_xy = sphere_radius * math.cos(dec_rad)
-            segments = 120
-            for j in range(segments + 1):
-                ra = 360 * j / segments
-                ra_rad = math.radians(ra)
-                x = r_xy * math.cos(ra_rad)
-                y = r_xy * math.sin(ra_rad)
-                if j == 0:
-                    grid.moveTo(x, y, z)
-                else:
-                    grid.drawTo(x, y, z)
-
-        # Right Ascension lines (vertical half-circles)
-        for i in range(ra_lines):
-            ra = 360 * i / ra_lines
-            ra_rad = math.radians(ra)
-            segments = 120
-            for j in range(segments + 1):
-                dec = -90 + 180 * j / segments
-                dec_rad = math.radians(dec)
-                x = sphere_radius * math.cos(dec_rad) * math.cos(ra_rad)
-                y = sphere_radius * math.cos(dec_rad) * math.sin(ra_rad)
-                z = sphere_radius * math.sin(dec_rad)
-                if j == 0:
-                    grid.moveTo(x, y, z)
-                else:
-                    grid.drawTo(x, y, z)
-
-        sky_grid_np = self.star_sphere_np.attachNewNode(grid.create())
-        sky_grid_np.setLightOff()
-        sky_grid_np.setTransparency(True)
-        sky_grid_np.setTwoSided(True)
-
-    def add_saturn_rings(self, inner_radius=EARTH_RADIUS*1.2,
-                         outer_radius=EARTH_RADIUS*3.0,
-                         inclination_deg=10, num_rings=5,
-                         transparency=0.6):
-        """Create Saturn-like ring system around Earth"""
-
-        # Create parent node for all rings
-        ring_system = self.render.attachNewNode("ring_system")
-
-        # Apply inclination to the entire ring system
-        ring_system.setP(inclination_deg)
-
-        # Create multiple rings with gaps
-        ring_width = (outer_radius - inner_radius) / (num_rings * 2 - 1)
-
-        for i in range(num_rings):
-            # Calculate this ring's inner and outer radius
-            ring_inner = inner_radius + i * ring_width * 2
-            ring_outer = ring_inner + ring_width
-
-            # Vary color slightly for each ring
-            base_color = (0.8, 0.75, 0.6, transparency)  # Sandy color
-            color_variation = 0.1 * (i / num_rings)
-            ring_color = (
-                base_color[0] - color_variation,
-                base_color[1] - color_variation,
-                base_color[2] - color_variation,
-                base_color[3]
-            )
-
-            # Create the ring
-            ring = self.create_flat_ring(
-                inner_radius=ring_inner,
-                outer_radius=ring_outer,
-                color=ring_color,
-                segments=120,
-                num_subdivisions=8
-            )
-
-            ring.reparentTo(ring_system)
-            ring.setTwoSided(True)
-            ring.setTransparency(True)
-            ring.setBin('transparent', 30)
-
-        # Parent to Earth so it follows Earth's rotation
-        ring_system.reparentTo(self.earth)
-        # Also set these on the parent node to be extra sure
-        ring_system.setTextureOff(1)
-        ring_system.setShaderOff(1)
-
-        return ring_system
-
-    def create_flat_ring(self, inner_radius, outer_radius, color, segments=64, num_subdivisions=4):
-        """Create a flat ring with triangles for better texture mapping"""
-
-        format = GeomVertexFormat.getV3n3c4t2()
-        vdata = GeomVertexData('ring', format, Geom.UHStatic)
-        vertex = GeomVertexWriter(vdata, 'vertex')
-        normal = GeomVertexWriter(vdata, 'normal')
-        color_writer = GeomVertexWriter(vdata, 'color')
-        texcoord = GeomVertexWriter(vdata, 'texcoord')
-
-        tris = GeomTriangles(Geom.UHStatic)
-
-        # Create vertices for the ring
-        for i in range(segments + 1):
-            angle = 2 * math.pi * i / segments
-            cos_angle = math.cos(angle)
-            sin_angle = math.sin(angle)
-
-            # Create multiple subdivisions from inner to outer radius
-            for j in range(num_subdivisions + 1):
-                # Calculate radius for this subdivision
-                r = inner_radius + (outer_radius - inner_radius) * j / num_subdivisions
-
-                x = r * cos_angle
-                y = r * sin_angle
-                z = 0  # Flat ring
-
-                # Add vertex
-                vertex.addData3(x, y, z)
-                normal.addData3(0, 0, 1)  # Normal points up
-                color_writer.addData4(*color)
-                texcoord.addData2(i / segments, j / num_subdivisions)
-
-        # Create triangles
-        for i in range(segments):
-            for j in range(num_subdivisions):
-                # First triangle
-                v1 = i * (num_subdivisions + 1) + j
-                v2 = (i + 1) * (num_subdivisions + 1) + j
-                v3 = i * (num_subdivisions + 1) + (j + 1)
-                tris.addVertices(v1, v2, v3)
-
-                # Second triangle
-                v1 = (i + 1) * (num_subdivisions + 1) + j
-                v2 = (i + 1) * (num_subdivisions + 1) + (j + 1)
-                v3 = i * (num_subdivisions + 1) + (j + 1)
-                tris.addVertices(v1, v2, v3)
-
-        geom = Geom(vdata)
-        geom.addPrimitive(tris)
-        node = GeomNode('ring')
-        node.addGeom(geom)
-
-        return NodePath(node)
-
-    def rotate_rings_task(self, task):
-        self.rings.setH(self.rings.getH() + 0.01)  # Slow rotation
         return Task.cont
 
