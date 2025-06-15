@@ -260,14 +260,32 @@ class EarthOrbitApp(ShowBase):
             color=(1, 0, 1, 1),
             satellite_color=(1, 0, 1, 1),
             thickness=5,
-            satellite_radius=0.3,
+            satellite_radius=0.2,
             visibility_cone=False,
             groundtrack=False,
-            orbit_path_linestyle = 2
+            orbit_path_linestyle = 2  # short dash
+        )
+        self.json_orbit_2 = Orbit(
+            parent=self,
+            central_body=self.earth,
+            name="json_orbit_2",
+            radius=EARTH_RADIUS * 5.0,
+            speed=4.0,
+            orbit_json='models/test_orbit_2.json',
+            spline_mode="cubic",  # linear or cubic
+            time_step = 0.1,       # can specify time step for resplining
+            #num_segments=5,
+            color=(1, 0, 1, 1),
+            satellite_color=(1, 0, 1, 1),
+            thickness=1,
+            satellite_radius=0.1,
+            visibility_cone=False,
+            groundtrack=False,
+            orbit_path_linestyle = 0  # short dash
         )
 
         self.orbits = []
-        for i in range(18):
+        for i in range(2):
             c = random_rgba()
             name = f"S{i}"
             s = Orbit(parent=self,

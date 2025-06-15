@@ -103,6 +103,7 @@ class Orbit:
         self.orbit_json = orbit_json
         self.trajectory_points = None
         self.trajectory_times = None
+        self.trajectory_colors = None
         if orbit_json:
             self._load_trajectory_from_json(orbit_json)
 
@@ -181,6 +182,12 @@ class Orbit:
             self.trajectory_points = [Point3(x, y, z) for x, y, z in zip(xs, ys, zs)]
             self.trajectory_times = ts
             self.trajectory_options = data.get("options", {})
+
+            if "colors" in data and len(data["colors"]) == len(xs):
+                self.trajectory_colors = [tuple(c) for c in data["colors"]]
+            else:
+                self.trajectory_colors = None
+
             if self.spline_mode == "cubic":
                 bc_type = 'periodic' if self.trajectory_options.get("loop", False) else 'not-a-knot'
                 self._splines = (
@@ -254,17 +261,33 @@ class Orbit:
         pts = [self.get_orbit_state(t) for t in ts]   #self.sample_orbit_path(ts)
         self._orbit_path_ts = ts
         self._orbit_path_pts = pts
-        draw_path(orbit_segs, pts, linestyle = self.orbit_path_linestyle)
 
-        orbit_np = NodePath(orbit_segs.create())
-        orbit_np.reparentTo(self.parent.render)
+        # --- Prepare per-point colors, resampled if needed ---
+        if self.trajectory_colors and self.trajectory_times:
+            # Interpolate colors at the new ts
+            orig_times = np.array(self.trajectory_times)
+            orig_colors = np.array(self.trajectory_colors)  # shape: (N, 4)
+            ts_arr = np.array(ts)
+
+            # Interpolate each channel separately
+            resampled_colors = []
+            for k in range(4):  # RGBA channels
+                channel = orig_colors[:, k]
+                interp = np.interp(ts_arr, orig_times, channel)
+                resampled_colors.append(interp)
+            # Stack back into (len(ts), 4)
+            colors = np.stack(resampled_colors, axis=1)
+            colors = [tuple(c) for c in colors]
+        else:
+            colors = [self.color] * len(pts)
+
+        orbit_np = draw_path(self.parent.render, pts, linestyle=self.orbit_path_linestyle, colors=colors)
+        orbit_np.setRenderModeThickness(self.thickness)
         orbit_np.setLightOff()
         orbit_np.setTextureOff()
         orbit_np.setShaderOff()
         orbit_np.clearColor()
-        orbit_np.setColor(self.color, 1)
         orbit_np.setTransparency(True)
-        self._orbit_path_offset = (self.central_body._body, orbit_np)
         return orbit_np
 
     def _create_visibility_cone(self, sat_pos):
@@ -547,33 +570,6 @@ class Orbit:
             self.groundtrack_node.removeNode()
         if self.label_np:
             self.label_np.removeNode()
-
-    def add_orbit_from_json(self, filename, color=(1, 0, 1, 1), thickness=2.0):
-        """Load orbit points from a JSON file and draw the orbit."""
-        with open(filename, "r") as f:
-            data = json.load(f)
-        options = data.get("options", {})
-        traj = data["trajectory"]
-        points = [Point3(p["x"], p["y"], p["z"]) for p in traj]
-        times = [p.get("t", i) for i, p in enumerate(traj)]
-
-        # Draw the orbit
-        segs = LineSegs()
-        segs.setThickness(thickness)
-        segs.setColor(*color)
-        for i, pt in enumerate(points):
-            if i == 0:
-                segs.moveTo(pt)
-            else:
-                segs.drawTo(pt)
-        orbit_np = self.parent.render.attachNewNode(segs.create())
-        orbit_np.setTransparency(True)
-        orbit_np.setBin('opaque', 20)
-
-        # Animate if requested
-        if options.get("animate", False):
-            self.animate_orbit_satellite(points, times, options)
-        return orbit_np
 
     def animate_orbit_satellite(self, points, times, options):
         # Create a satellite model if not already present

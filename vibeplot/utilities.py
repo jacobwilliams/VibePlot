@@ -5,6 +5,8 @@ from panda3d.core import (GeomVertexFormat,
                           GeomVertexWriter,
                           Geom, GeomNode,
                           GeomTriangles,
+                          GeomLinestrips,
+                          GeomLines,
                           NodePath,
                           Vec3,
                           LineSegs,
@@ -150,53 +152,92 @@ def random_rgba(alpha=1.0):
     """
     return (random.random(), random.random(), random.random(), alpha)
 
-def draw_path(segs: LineSegs, pts, linestyle: int = 0):
-    """Draw a path using LineSegs.
+def draw_path(parent, pts, linestyle: int = 0, colors=None):
+    """
+    Draw a path with optional per-point colors and line styles.
 
     Args:
-        segs (LineSegs): LineSegs object to draw on.
-        pts (_type_): List of Point3 or Vec3 points to connect.
-        linestyle (int, optional): See `LINE_STYLES` for options.
-            0 for solid lines,
-            1 for dashed lines,
-            2 for dot-dash lines.
-            Defaults to 0.
+        parent (NodePath): NodePath to attach the line geometry to.
+        pts (list): List of Point3 or Vec3 points to connect.
+        linestyle (int, optional): See `LINE_STYLES` for options. Defaults to 0 (solid).
+        colors (list, optional): List of (r, g, b, a) tuples, one per point. If provided, enables per-vertex color.
+    Returns:
+        NodePath: The created line NodePath.
     """
+    if not pts or len(pts) < 2:
+        return None
+    if colors is not None and len(colors) != len(pts):
+        raise ValueError("colors must be the same length as pts")
+
+    format = GeomVertexFormat.getV3cp()
+    vdata = GeomVertexData('line', format, Geom.UHStatic)
+    vertex = GeomVertexWriter(vdata, 'vertex')
+    color_writer = GeomVertexWriter(vdata, 'color')
+
+    geom = Geom(vdata)
+    node = GeomNode('line_path')
 
     if linestyle == 0:
-        # solid lines
-        for i, pt in enumerate(pts):
-            if i == 0:
-                segs.moveTo(pt)
+        # Solid line (as a single linestrip)
+        for pt, col in zip(pts, colors if colors else [None]*len(pts)):
+            vertex.addData3(pt)
+            if colors:
+                color_writer.addData4f(*col)
             else:
-                segs.drawTo(pt)
-        return
+                color_writer.addData4f(1, 1, 1, 1)
+        linestrip = GeomLinestrips(Geom.UHStatic)
+        for i in range(len(pts)):
+            linestrip.addVertex(i)
+        linestrip.closePrimitive()
+        geom.addPrimitive(linestrip)
+    else:
+        # Dashed or patterned lines: draw as individual segments
+        s = LINE_STYLES[linestyle]
+        pattern_len = len(s)
+        pattern_idx = 0
+        remaining = s[pattern_idx]
+        drawing = True
 
-    s = LINE_STYLES[linestyle]
-    pattern_len = len(s)
-    pattern_idx = 0
-    remaining = s[pattern_idx]
-    drawing = True
+        vtx_idx = 0
+        i = 0
+        while i < len(pts) - 1:
+            p0 = pts[i]
+            p1 = pts[i+1]
+            c0 = colors[i] if colors else (1, 1, 1, 1)
+            c1 = colors[i+1] if colors else (1, 1, 1, 1)
+            seg_vec = p1 - p0
+            seg_len = seg_vec.length()
+            seg_dir = seg_vec.normalized() if seg_len > 0 else Point3(0,0,0)
+            seg_pos = 0.0
+            while seg_pos < seg_len:
+                step = min(remaining, seg_len - seg_pos)
+                p_start = p0 + seg_dir * seg_pos
+                p_end = p0 + seg_dir * (seg_pos + step)
+                # Interpolate color for the segment ends
+                t0 = seg_pos / seg_len if seg_len > 0 else 0
+                t1 = (seg_pos + step) / seg_len if seg_len > 0 else 1
+                col_start = tuple(c0[j] + (c1[j] - c0[j]) * t0 for j in range(4))
+                col_end = tuple(c0[j] + (c1[j] - c0[j]) * t1 for j in range(4))
+                if drawing:
+                    vertex.addData3(p_start)
+                    color_writer.addData4f(*col_start)
+                    vertex.addData3(p_end)
+                    color_writer.addData4f(*col_end)
+                    line = GeomLines(Geom.UHStatic)
+                    line.addVertices(vtx_idx, vtx_idx + 1)
+                    geom.addPrimitive(line)
+                    vtx_idx += 2
+                seg_pos += step
+                remaining -= step
+                if remaining <= 1e-8:
+                    pattern_idx = (pattern_idx + 1) % pattern_len
+                    remaining = s[pattern_idx]
+                    drawing = not drawing
+            i += 1
 
-    i = 0
-    while i < len(pts) - 1:
-        p0 = pts[i]
-        p1 = pts[i+1]
-        seg_vec = p1 - p0
-        seg_len = seg_vec.length()
-        seg_dir = seg_vec.normalized() if seg_len > 0 else Point3(0,0,0)
-        seg_pos = 0.0
-        while seg_pos < seg_len:
-            step = min(remaining, seg_len - seg_pos)
-            p_start = p0 + seg_dir * seg_pos
-            p_end = p0 + seg_dir * (seg_pos + step)
-            if drawing:
-                segs.moveTo(p_start)
-                segs.drawTo(p_end)
-            seg_pos += step
-            remaining -= step
-            if remaining <= 1e-8:
-                pattern_idx = (pattern_idx + 1) % pattern_len
-                remaining = s[pattern_idx]
-                drawing = not drawing
-        i += 1
+    node.addGeom(geom)
+    np = parent.attachNewNode(node)
+    np.setTransparency(True)
+    np.setLightOff()
+    np.setTwoSided(True)
+    return np
