@@ -554,8 +554,11 @@ class Orbit:
 
     def destroy(self):
         """Clean up the orbit"""
-        # Remove the task
+
+        # Remove the tasks
         self.parent.taskMgr.remove(f"{self.name}OrbitTask")
+        if self.parent.taskMgr.hasTaskNamed(f"{self.name}PulsateOrbitLineTask"):
+            self.parent.taskMgr.remove(f"{self.name}PulsateOrbitLineTask")
 
         # Remove nodes
         if self.satellite:
@@ -570,34 +573,13 @@ class Orbit:
             self.groundtrack_node.removeNode()
         if self.label_np:
             self.label_np.removeNode()
+        if hasattr(self, 'orbit_tube_np') and self.orbit_tube_np:
+            self.orbit_tube_np.removeNode()
 
-    def animate_orbit_satellite(self, points, times, options):
-        # Create a satellite model if not already present
+        # remove from parent orbits list:
+        if hasattr(self.parent, 'orbits') and self in self.parent.orbits:
+            self.parent.orbits.remove(self)
 
-        if not hasattr(self, "orbit_satellite"):
-            self.orbit_satellite = self.loader.loadModel("models/planet_sphere")
-            self.orbit_satellite.setScale(0.12)
-            self.orbit_satellite.setColor(1, 0, 1, 1)
-            self.orbit_satellite.reparentTo(self.render)
-
-        speed = options.get("speed", 1.0)
-        loop = options.get("loop", True)
-        t_min, t_max = times[0], times[-1]
-
-        def orbit_anim_task(task):
-            et = self.parent.get_et(task)
-            t = (et * speed) % (t_max - t_min) + t_min if loop else min(et * speed + t_min, t_max)
-            # Find the segment
-            for i in range(len(times) - 1):
-                if times[i] <= t <= times[i+1]:
-                    # Linear interpolation
-                    alpha = (t - times[i]) / (times[i+1] - times[i])
-                    pos = points[i] * (1 - alpha) + points[i+1] * alpha
-                    self.orbit_satellite.setPos(pos)
-                    break
-            return task.cont if (loop or t < t_max) else task.done
-
-        self.parent.add_task(orbit_anim_task, "OrbitAnimTask")
 
     # def pulsate_orbit_line_task(self, task):
     #     # Pulsate between 2.0 and 8.0 thickness, and brightness 0.5 to 1.0

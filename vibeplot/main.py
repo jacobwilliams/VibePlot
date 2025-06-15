@@ -268,21 +268,22 @@ class EarthOrbitApp(ShowBase):
         self.json_orbit_2 = Orbit(
             parent=self,
             central_body=self.earth,
-            name="json_orbit_2",
-            radius=EARTH_RADIUS * 5.0,
-            speed=4.0,
+            name="json_orbit_polar",
+            radius=EARTH_RADIUS * 5.0,  # not used for json orbit
+            speed=8.0,
             orbit_json='models/test_orbit_2.json',
             spline_mode="cubic",  # linear or cubic
             time_step = 0.1,       # can specify time step for resplining
             #num_segments=5,
             color=(1, 0, 1, 1),
-            satellite_color=(1, 0, 1, 1),
+            satellite_color=(1, 1, 1, 1),
             thickness=1,
             satellite_radius=0.1,
             visibility_cone=False,
             groundtrack=False,
             orbit_path_linestyle = 0  # short dash
         )
+        # self.json_orbit_2.destroy()  # test - remove it
 
         self.orbits = []
         for i in range(2):
@@ -494,18 +495,6 @@ class EarthOrbitApp(ShowBase):
             label_np.setLightOff()
             self.particle_labels.append(label_np)
 
-            # .. old version with OnscreenText:
-            # label = OnscreenText(
-            #     text=f"S{idx+1}",
-            #     pos=(0, 0),  # Will be updated each frame
-            #     scale=0.05,
-            #     fg=(0, 0, 0, 1),
-            #     bg=(1, 1, 1, 0.5),
-            #     mayChange=True,
-            #     align=TextNode.ACenter
-            # )
-            # self.particle_labels.append(label)
-
         self.labels_visible = True
         self.accept("s", self.toggle_particle_labels)
 
@@ -527,9 +516,11 @@ class EarthOrbitApp(ShowBase):
         self.lines_np.setLightOff()  # Turn off lighting completely
 
         # Trace settings
-        self.trace_length = 100  # Number of points in the trace
-        self.particle_traces = [[particle.getPos()] * self.trace_length for particle in self.particles]
-        self.trace_nodes = [self.render.attachNewNode("trace") for _ in self.particles]
+        self.use_particle_traces = True
+        if self.use_particle_traces:
+            self.trace_length = 100  # Number of points in the trace
+            self.particle_traces = [[particle.getPos()] * self.trace_length for particle in self.particles]
+            self.trace_nodes = [self.render.attachNewNode("trace") for _ in self.particles]
 
         self.add_task(self.particles_orbit_task, "ParticlesOrbitTask")
 
@@ -1332,23 +1323,24 @@ class EarthOrbitApp(ShowBase):
             pos = Point3(x, y_incl, z_incl)
             particle.setPos(pos)
 
-            # Update trace positions
-            trace = self.particle_traces[i]
-            trace.append(pos)
-            if len(trace) > self.trace_length:
-                trace.pop(0)
+            if self.use_particle_traces:
+                # Update trace positions
+                trace = self.particle_traces[i]
+                trace.append(pos)
+                if len(trace) > self.trace_length:
+                    trace.pop(0)
 
-            # Draw fading trace
-            self.trace_nodes[i].removeNode()
-            segs = LineSegs()
-            for j in range(1, len(trace)):
-                alpha = j / self.trace_length  # Fades from 0 to 1
-                segs.setColor(alpha, alpha, 0, alpha)
-                segs.moveTo(trace[j-1])
-                segs.drawTo(trace[j])
-            self.trace_nodes[i] = self.render.attachNewNode(segs.create())
-            self.trace_nodes[i].setTransparency(True)
-            self.trace_nodes[i].setLightOff()
+                # Draw fading trace
+                self.trace_nodes[i].removeNode()
+                segs = LineSegs()
+                for j in range(1, len(trace)):
+                    alpha = j / self.trace_length  # Fades from 0 to 1
+                    segs.setColor(alpha, alpha, 0, alpha)
+                    segs.moveTo(trace[j-1])
+                    segs.drawTo(trace[j])
+                self.trace_nodes[i] = self.render.attachNewNode(segs.create())
+                self.trace_nodes[i].setTransparency(True)
+                self.trace_nodes[i].setLightOff()
 
             pos_3d = particle.getPos(self.render)
             pos_cam = self.camera.getRelativePoint(self.render, pos_3d)
