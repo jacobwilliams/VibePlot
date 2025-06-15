@@ -48,6 +48,7 @@ VENUS_RADIUS = EARTH_RADIUS * 0.2  # Radius of Venus in Panda3D units
 SUN_RADIUS = EARTH_RADIUS * 2
 MIN_LABEL_SCALE = 0  #0.05
 RAD2DEG = 180.0 / math.pi
+MIN_TIME = 0.0
 MAX_TIME = 100.0  # temp: this represents the max time of the mission [will be user input: min/max]
 
 
@@ -62,7 +63,7 @@ class EarthOrbitApp(ShowBase):
         # to keep track of sim time:
         self.use_slider_time = False
         self.pause_scene_animation()
-        self.sim_time = 0.0  # This will be your time variable
+        self.sim_time = MIN_TIME  # This will be your time variable
         self.sim_time_task = self.add_task(self.sim_time_update_task, "SimTimeTask")
 
         # Task for tracking mouse during drag
@@ -96,7 +97,6 @@ class EarthOrbitApp(ShowBase):
 
         # Initialize in base frame at startup
         self.setup_base_frame()
-        self.add_task(self.update_body_fixed_camera_task, "UpdateBodyFixedCamera")
 
         if parent_window is not None:
             props = WindowProperties()
@@ -263,35 +263,35 @@ class EarthOrbitApp(ShowBase):
             satellite_radius=0.3,
             visibility_cone=False,
             groundtrack=False,
-            orbit_path_linestyle = 1
+            orbit_path_linestyle = 2
         )
 
         self.orbits = []
         for i in range(18):
             c = random_rgba()
             name = f"S{i}"
-            s = Orbit(  parent=self,
-                        central_body=self.earth,
-                        name=name,
-                        radius=EARTH_RADIUS * 10.0,
-                        speed=2.0,
-                        inclination_deg=i*10,
-                        spline_mode="cubic",  # linear or cubic
-                        time_step = 0.1,       # can specify time step for resplining
-                        label_text=name,
-                        label_size=0.8,
-                        label_color=c, #(1,1,1,1),
-                        color=c,
-                        satellite_color=c,
-                        thickness=2,
-                        enable_shadow=False,
-                        satellite_radius=0.3,
-                        visibility_cone=False,
-                        groundtrack=False )
+            s = Orbit(parent=self,
+                      central_body=self.earth,
+                      name=name,
+                      radius=EARTH_RADIUS * 10.0,
+                      speed=2.0,
+                      inclination_deg=i*10,
+                      spline_mode="cubic",  # linear or cubic
+                      time_step = 0.1,  # can specify time step for resplining
+                      label_text=name,
+                      label_size=0.8,
+                      label_color=c,
+                      color=c,
+                      satellite_color=c,
+                      thickness=2,
+                      enable_shadow=False,
+                      satellite_radius=0.3,
+                      visibility_cone=False,
+                      groundtrack=False)
             self.orbits.append(s)
 
         # put a site on the Earth:
-        site_lat = 0.519 * RAD2DEG   # deg
+        site_lat = 0.519 * RAD2DEG  # deg
         site_lon = 1.665 * RAD2DEG  # radians
         self.site = Site(parent=self, name = 'site', central_body=self.earth, lat_deg=site_lat, lon_deg=site_lon, radius_offset=0.001, radius=0.01, color=(1,0,0,0.5))  #, show_axes=False, axes_length=0.2, label=None, label_color=(1,1,1,1))
         self.site_lines_np = None
@@ -332,32 +332,32 @@ class EarthOrbitApp(ShowBase):
         )
 
         self.venus = Body(self,
-                 name="Venus",
-                 texture='models/2k_venus_surface.jpg',
-                 radius=VENUS_RADIUS,
-                 color=(1, 0.8, 0.6, 1),
-                 trace_length=50,
-                 orbit_markers=True,
-                 marker_size=0.06,
-                 marker_interval=5,
-                 marker_color=(1, 1, 1, 0.5))
+                          name="Venus",
+                          texture='models/2k_venus_surface.jpg',
+                          radius=VENUS_RADIUS,
+                          color=(1, 0.8, 0.6, 1),
+                          trace_length=50,
+                          orbit_markers=True,
+                          marker_size=0.06,
+                          marker_interval=5,
+                          marker_color=(1, 1, 1, 0.5)
+                          )
 
         venus_site = Site(parent=self, name='P1', label_scale=0.1, central_body=self.venus, lat_deg=40, radius = 0.01, radius_offset = 0.02, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
 
-        self.venus_orbiter = Orbit(
-            parent=self,
-            central_body=self.venus,
-            name="venus_orbiter",
-            radius=VENUS_RADIUS * 1.5,
-            satellite_radius=0.02,
-            speed=3.0,
-            inclination_deg=90,
-            color=(1, 1, 1, 1),
-            satellite_color=(1, 1, 1, 1),
-            visibility_cone=True,
-            groundtrack=True,
-            groundtrack_length = 400
-        )
+        self.venus_orbiter = Orbit(parent=self,
+                                   central_body=self.venus,
+                                   name="venus_orbiter",
+                                   radius=VENUS_RADIUS * 1.5,
+                                   satellite_radius=0.02,
+                                   speed=3.0,
+                                   inclination_deg=90,
+                                   color=(1, 1, 1, 1),
+                                   satellite_color=(1, 1, 1, 1),
+                                   visibility_cone=True,
+                                   groundtrack=True,
+                                   groundtrack_length = 400
+                                )
 
         self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=40, lon_deg=-105, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
 
@@ -386,21 +386,20 @@ class EarthOrbitApp(ShowBase):
             )
 
         for inc in range(0, 360, 20):
-            self.moon_satellite_2 = Orbit(
-                parent=self,
-                central_body=self.moon,
-                name=f"moon_satellite_{inc}",
-                radius=MOON_RADIUS * 1.2,
-                satellite_radius = 0.03,
-                thickness=2,
-                speed=2*inc/260,
-                inclination_deg=inc,
-                color=(inc/360, inc/360, 0, 1),
-                satellite_color=(inc/360, inc/360, 0, 1),
-                visibility_cone=False,
-                groundtrack=False,
-                enable_shadow=False
-            )
+            self.moon_satellite_2 = Orbit(parent=self,
+                                          central_body=self.moon,
+                                          name=f"moon_satellite_{inc}",
+                                          radius=MOON_RADIUS * 1.2,
+                                          satellite_radius = 0.03,
+                                          thickness=2,
+                                          speed=2*inc/260,
+                                          inclination_deg=inc,
+                                          color=(inc/360, inc/360, 0, 1),
+                                          satellite_color=(inc/360, inc/360, 0, 1),
+                                          visibility_cone=False,
+                                          groundtrack=False,
+                                          enable_shadow=False
+                                        )
 
         if draw_plane:
             # --- Equatorial plane (square, translucent) ---
@@ -550,7 +549,7 @@ class EarthOrbitApp(ShowBase):
         if not self.use_slider_time:
             if not self.paused:
                 self.sim_time += globalClock.getDt()
-                self.sim_time = self.sim_time % MAX_TIME
+                self.sim_time = max(MIN_TIME, self.sim_time % MAX_TIME)
                 if hasattr(self, "time_slider"):
                     self.time_slider['value'] = self.sim_time
                 if hasattr(self, "time_label"):
@@ -558,16 +557,19 @@ class EarthOrbitApp(ShowBase):
         return Task.cont
 
     def pause_scene_animation(self):
+        """Pause the scene animation."""
         self.paused = True  # Set the pause flag to True
         if hasattr(self, 'pause_button'):
             self.pause_button['text'] = "Resume"
 
     def resume_scene_animation(self):
+        """Resume the scene animation."""
         self.paused = False  # Set the pause flag to False
         if hasattr(self, 'pause_button'):
             self.pause_button['text'] = "Pause"
 
     def on_slider_change(self):
+        """Handle slider change event to update simulation time."""
         self.sim_time = float(self.time_slider['value'])
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
@@ -625,7 +627,7 @@ class EarthOrbitApp(ShowBase):
         )
 
         self.time_slider = DirectSlider(
-            range=(0, MAX_TIME),  # Set min/max time as needed
+            range=(MIN_TIME, MAX_TIME),  # Set min/max time as needed
             value=self.sim_time,
             pageSize=1,      # How much to move per click
             scale=0.6,
@@ -670,15 +672,10 @@ class EarthOrbitApp(ShowBase):
             self.camera.reparentTo(self.initial_camera_parent)
             self.camera.setPos(self.render, self.initial_camera_pos)
             self.camera.setHpr(self.render, self.initial_camera_hpr)
-            #self.trackball.reparentTo(self.initial_trackball_parent)
             self.trackball.setPos(self.render, self.initial_trackball_pos)
             self.trackball.setHpr(self.render, self.initial_trackball_hpr)
-
-            # self.trackball.node().resetMat()
             self.trackball.node().setMat(Mat4())  # Reset matrix to identity
-
             self.camera.lookAt(0, 0, 0)
-
         else:
             # First call - just use default setup
             self.trackball.node().setPos(0, view_distance, 0)
@@ -686,7 +683,6 @@ class EarthOrbitApp(ShowBase):
             self.trackball.node().setForwardScale(1.0)
             self.trackball.node().setRelTo(self.render)
             self.camera.setPos(0, view_distance, 0)
-
             # Store the initial WORKING camera setup:
             self.initial_camera_parent = self.camera.getParent()
             self.initial_camera_pos = self.camera.getPos(self.render)
@@ -701,12 +697,6 @@ class EarthOrbitApp(ShowBase):
         # Change star sphere parent to render
         if self.stars:
             self.stars.star_sphere_np.reparentTo(self.render)
-
-    def update_body_fixed_camera_task(self, task):
-        """When in body-fixed mode, adjust the view parameters if needed."""
-        # We don't need to constantly reposition since the camera is parented
-        # Just update view parameters if they change
-        return Task.cont
 
     def setup_body_fixed_frame(self, body: Body, view_distance: float = None, follow_without_rotation: bool = False, body_to_look_at: Body = None):
         """Sets up the camera in a body-fixed frame.
@@ -838,7 +828,7 @@ class EarthOrbitApp(ShowBase):
         print("Reset")
         self.use_slider_time = False  # Enter manual time mode
         self.resume_scene_animation()
-        self.sim_time = 0.0  # reset clock
+        self.sim_time = MIN_TIME  # reset clock
 
         # Clean up tasks created by setup_body_fixed_frame
         if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):

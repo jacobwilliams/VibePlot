@@ -14,6 +14,7 @@ from panda3d.core import (GeomVertexFormat,
 # lines styles are defined as (length, gap *[,length, gap])
 LINE_STYLES = [(1.0),                 # solid
                (1.0, 1.0),            # dashed
+               (0.5, 0.5),            # short dashed
                (0.2, 0.3, 1.0, 0.3),  # dot-dash
                (0.2, 1.0),            # dot
                (2.0, 1.0)]            # long dash

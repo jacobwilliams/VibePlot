@@ -86,8 +86,12 @@ class Body:
         self.parent = parent
         if get_position_vector is not None:
             self.get_position_vector = get_position_vector
+        else:
+            self.get_position_vector = self._get_position_vector
         if get_rotation_matrix is not None:
             self.get_rotation_matrix = get_rotation_matrix
+        else:
+            self.get_rotation_matrix = self._get_rotation_matrix
         self.label_scale = label_scale
         self.trace_color = trace_color
 
@@ -283,7 +287,7 @@ class Body:
         quat.setFromMatrix(mat3)
         self._rotator.setQuat(quat)
 
-    def get_position_vector(self, et: float):
+    def _get_position_vector(self, et: float):
         """Calculates the position vector of the body.
 
         Args:
@@ -345,7 +349,7 @@ class Body:
         # Default: stationary at origin
         return np.array([0.0, 0.0, 0.0])
 
-    def get_rotation_matrix(self, et: float):
+    def _get_rotation_matrix(self, et: float):
         """Calculates the rotation matrix of the body.
 
         Args:
@@ -618,7 +622,7 @@ class Body:
 
         return Task.cont
 
-    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1), thickness=1.0):
+    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1), thickness=2.0):
         """Draws latitude and longitude grid lines on the body.
 
         Args:
