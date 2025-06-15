@@ -51,7 +51,8 @@ class Body:
                  marker_color=(0, 1, 1, 1),
                  show_label: bool = True,
                  label_scale: float = 0.4,
-                 material: Material = None):
+                 material: Material = None,
+                 is_sun: bool = False):
         """Initializes a celestial body with various visual and physical properties.
 
         Args:
@@ -78,6 +79,7 @@ class Body:
             show_label (bool, optional): Whether to show the body's label. Defaults to True.
             label_scale (float, optional): Scale of the label. Defaults to 0.4.
             material (Material, optional): Material properties for the body. Defaults to None.
+            is_sun (bool, optional): Whether the body is the sun. Defaults to False.
         """
 
         self.name = name
@@ -112,36 +114,22 @@ class Body:
         self._body = create_sphere(radius, num_lat=24, num_lon=48, color=color)
         self._body.reparentTo(self._rotator)
         self._body.setPos(0, 0, 0)
-
         self._body.setLightOff()
         self._body.setLight(self.parent.dlnp)
-
         if texture is not None:
-
             tex = parent.loader.loadTexture(texture)
             self._body.setTexture(tex, 1)
-
         elif day_tex is not None and night_tex is not None:
-
             # Load and apply Earth texture
             day_tex = parent.loader.loadTexture(day_tex)
+            self.day_tex = day_tex  # save it
             night_tex = parent.loader.loadTexture(night_tex)
+            self.night_tex = night_tex  # save it
             self._body.setTexture(day_tex, 1)
-            self._body.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
-            self._body.setTexture(TextureStage("day"), day_tex)
-            self._body.setTexture(TextureStage("night"), night_tex)
-            self._body.setShaderInput("day", day_tex)
-            self._body.setShaderInput("night", night_tex)
-            # Set the sun direction uniform (should match your light direction)
-            self._body.setShaderInput("sundir", sun_dir)
-            self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
-
+            self._apply_daynight_shader(sun_dir)
         else:
-
             # no texture, just a color
             self._body.setColor(*color)
-            # Only enable automatic shaders for non-textured bodies
-            # self._body.setShaderAuto()
 
         # # Enable shadow casting and receiving
         # # self._body.setShaderAuto()
@@ -188,15 +176,58 @@ class Body:
             label_np.setLightOff()
             self.body_label_np = label_np  # Store reference if you want to hide/show later
 
-        self.reparent_to_rotator()
+        self.is_sun = is_sun
+        if self.is_sun:
+            self._body.setLightOff()  # no shadowing on the sun!
+            # trying to get the light to follow the sun.
+            # [it's a directionaly light, not a point light (which i couldn't get to work)]
+            # self.parent.dlnp.reparentTo(self.sun._body)  # move light to the sun
+            # self.parent.dlnp.setPos(0, 0, 0)
+            self.parent.add_task(self.update_sunlight_direction, "UpdateSunlightDirection")
 
-        #...test...
-        # self._body.setLightOff()
-        # self._body.setTextureOff(1)  # <--- This disables texture inheritance
-        # self._body.setTransparency(True)
+        self.reparent_to_rotator()
 
         # add to the list of bodies in the scene:
         self.parent.bodies.append(self)
+
+    def _apply_daynight_shader(self, sun_dir=None):
+        """Apply the day/night shader and textures to this body."""
+        if hasattr(self, "day_tex") and hasattr(self, "night_tex"):
+            self._body.setShader(Shader.load(Shader.SL_GLSL, "models/earth_daynight.vert", "models/earth_daynight.frag"))
+            self._body.setTexture(TextureStage("day"), self.day_tex)
+            self._body.setTexture(TextureStage("night"), self.night_tex)
+            self._body.setShaderInput("day", self.day_tex)
+            self._body.setShaderInput("night", self.night_tex)
+            # Set the sun direction uniform (should match your light direction)
+            if sun_dir is not None:
+                self._body.setShaderInput("sundir", sun_dir)
+            else:
+                self._body.setShaderInput("sundir", LVector3(0, 0, 1))
+            # Add/update the sun direction update task
+            if not self.parent.taskMgr.hasTaskNamed(f"Update{self.name}ShaderSunDir"):
+                self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
+
+    def set_shadowed(self, enable: bool, sunlight_np=None):
+        """
+        Enable or disable sunlight/shadowing on this body.
+        If the body uses a day/night shader, disables the shader and sets the day texture when shadowing is off.
+        """
+        if enable:
+            if sunlight_np:
+                self._body.setLight(sunlight_np)
+            self._body.setShaderAuto()
+            self._apply_daynight_shader()
+        else:
+            if sunlight_np:
+                self._body.setLightOff(sunlight_np)
+            self._body.setShaderOff()
+            # If using a day/night shader, switch to day texture only
+            if hasattr(self, "day_tex"):
+                self._body.clearTexture()
+                self._body.setTexture(self.day_tex, 1)
+            # Remove the sundir update task if present
+            if self.parent.taskMgr.hasTaskNamed(f"Update{self.name}ShaderSunDir"):
+                self.parent.taskMgr.remove(f"Update{self.name}ShaderSunDir")
 
     def update_earth_shader_sundir_task(self, task):
         """Updates the shader's sun direction for the Earth.
@@ -673,6 +704,12 @@ class Body:
         self.grid_np.setTwoSided(True)
         # self.grid_np.setDepthOffset(2)
         self.grid_np.setDepthOffset(1)
+
+    def update_sunlight_direction(self, task):
+        sun_pos = self._body.getPos(self.parent.render)
+        self.parent.dlnp.setPos(sun_pos)  # Move the light to the Sun's position (optional for DirectionalLight)
+        self.parent.dlnp.lookAt(0, 0, 0)  # Point at the scene center
+        return Task.cont
 
     # def add_saturn_rings(self, inner_radius=EARTH_RADIUS*1.2,
     #                      outer_radius=EARTH_RADIUS*3.0,

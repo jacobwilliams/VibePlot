@@ -193,8 +193,11 @@ class EarthOrbitApp(ShowBase):
 
         # list of the attributes in the scene:
         # [note a site is a kind of body]
-        self.bodies = []
-        self.orbits = []
+        self.bodies: list[Body] = []
+        self.orbits: list[Orbit] = []
+
+        ############################################
+        # add items to the scene:
 
         self.earth = Body(
             self,
@@ -312,7 +315,14 @@ class EarthOrbitApp(ShowBase):
         # put a site on the Earth:
         site_lat = 0.519 * RAD2DEG  # deg
         site_lon = 1.665 * RAD2DEG  # radians
-        self.site = Site(parent=self, name = 'site', central_body=self.earth, lat_deg=site_lat, lon_deg=site_lon, radius_offset=0.001, radius=0.01, color=(1,0,0,0.5))  #, show_axes=False, axes_length=0.2, label=None, label_color=(1,1,1,1))
+        self.site = Site(parent=self,
+                         name = 'site',
+                         central_body=self.earth,
+                         lat_deg=site_lat,
+                         lon_deg=site_lon,
+                         radius_offset=0.001,
+                         radius=0.01,
+                         color=(1,0,0,0.5))
         self.site_lines_np = None
 
         self.moon = Body(
@@ -324,21 +334,17 @@ class EarthOrbitApp(ShowBase):
             draw_3d_axes=True
         )
 
+        # note: we need a way to disable body shadows if
+        # the sun is not in the scene.
         self.sun = Body(
                     self,
                     name="Sun",
                     radius=SUN_RADIUS,
                     texture="models/2k_sun.jpg",
                     color=(1, 1, 0, 1),
-                    draw_3d_axes=False
+                    draw_3d_axes=False,
+                    is_sun=True,  # use this as the light source
                 )
-        self.sun._body.setLightOff()  # no shadowing on the sun!
-
-        # trying to get the light to follow the sun.
-        # [it's a directionaly light, not a point light (which i couldn't get to work)]
-        # self.dlnp.reparentTo(self.sun._body)  # move light to the sun
-        # self.dlnp.setPos(0, 0, 0)
-        self.add_task(self.update_sunlight_direction, "UpdateSunlightDirection")
 
         self.mars = Body(
             self,
@@ -421,9 +427,10 @@ class EarthOrbitApp(ShowBase):
                                         )
 
         if draw_plane:
+            print('draw plane')
             # --- Equatorial plane (square, translucent) ---
-            plane_size = 4.0  # Half-width of the square plane
-            plane_color = (0.2, 0.6, 1.0, 0.18)  # RGBA, mostly transparent blue
+            plane_size = EARTH_RADIUS * 4.0  # Half-width of the square plane
+            plane_color = (0.2, 0.6, 1.0, 0.3)  # RGBA, mostly transparent blue
             # Create the plane
             cm = CardMaker("equatorial_plane")
             cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
@@ -435,7 +442,7 @@ class EarthOrbitApp(ShowBase):
             # --- Gridlines on the plane ---
             gridlines = LineSegs()
             gridlines.setThickness(1.0)
-            grid_color = (0.5, 0.8, 1.0, 0.35)  # Slightly more visible
+            grid_color = (1, 1, 1.0, 0.6)  # Slightly more visible
             num_lines = 9  # Number of gridlines per axis
             step = (2 * plane_size) / (num_lines - 1)
             z = 0  # Equatorial plane at z=0
@@ -475,9 +482,6 @@ class EarthOrbitApp(ShowBase):
             inclination = random.uniform(0, math.pi)
             angle0 = random.uniform(0, 2 * math.pi)
             speed = random.uniform(0.05, 0.2)
-            # particle = self.loader.loadModel("models/planet_sphere")
-            #particle.setScale(particle_radius)
-            #particle.setColor(random.random(), random.random(), random.random(), 1)
             particle = create_sphere(radius=particle_radius, num_lat=10, num_lon=20, color=(random.random(), random.random(), random.random(), 1))
             particle.reparentTo(self.render)
             self.particles.append(particle)
@@ -521,7 +525,6 @@ class EarthOrbitApp(ShowBase):
             self.trace_length = 100  # Number of points in the trace
             self.particle_traces = [[particle.getPos()] * self.trace_length for particle in self.particles]
             self.trace_nodes = [self.render.attachNewNode("trace") for _ in self.particles]
-
         self.add_task(self.particles_orbit_task, "ParticlesOrbitTask")
 
         # movie recording:
@@ -535,11 +538,16 @@ class EarthOrbitApp(ShowBase):
         self.recenter_on_earth()  # start the animation centered on Earth
         self.setup_gui()  # set up the GUI buttons/slider/etc
 
-    def update_sunlight_direction(self, task):
-        sun_pos = self.sun._body.getPos(self.render)
-        self.dlnp.setPos(sun_pos)  # Move the light to the Sun's position (optional for DirectionalLight)
-        self.dlnp.lookAt(0, 0, 0)  # Point at the scene center
-        return Task.cont
+        # test: turn off shadowing on the bodies:
+        # self.toggle_sunlight_on_bodies(False)
+
+    def toggle_sunlight_on_bodies(self, enable: bool = None):
+        """
+        Toggle whether all bodies are lit by the main sunlight (directional light).
+        If enable is None, toggles the current state.
+        """
+        for body in self.bodies:
+            body.set_shadowed(enable, sunlight_np=self.dlnp)
 
     def _on_slider_drag_start(self, event):
         self.use_slider_time = True
