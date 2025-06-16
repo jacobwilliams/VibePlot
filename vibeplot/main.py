@@ -570,6 +570,7 @@ class EarthOrbitApp(ShowBase):
         self.use_slider_time = False
 
     def on_slider_change(self):
+        """Handle slider change event to update simulation time."""
         self.sim_time = float(self.time_slider['value'])
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
@@ -596,11 +597,6 @@ class EarthOrbitApp(ShowBase):
         self.paused = False  # Set the pause flag to False
         if hasattr(self, 'pause_button'):
             self.pause_button['text'] = "Pause"
-
-    def on_slider_change(self):
-        """Handle slider change event to update simulation time."""
-        self.sim_time = float(self.time_slider['value'])
-        self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
     def setup_gui(self):
         """Add some GUI elements for interaction."""
