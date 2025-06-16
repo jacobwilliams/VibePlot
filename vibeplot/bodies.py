@@ -50,6 +50,7 @@ class Body:
                  marker_size: float = 0.08,
                  marker_color=(0, 1, 1, 1),
                  show_label: bool = True,
+                 label_on_top: bool = False,
                  label_scale: float = 0.4,
                  material: Material = None,
                  is_sun: bool = False):
@@ -77,6 +78,7 @@ class Body:
             marker_size (float, optional): Size of orbit markers. Defaults to 0.08.
             marker_color (tuple, optional): RGBA color of orbit markers. Defaults to (0, 1, 1, 1).
             show_label (bool, optional): Whether to show the body's label. Defaults to True.
+            label_on_top (bool, optional): Label is always visible even when behind other objects. Defaults to False.
             label_scale (float, optional): Scale of the label. Defaults to 0.4.
             material (Material, optional): Material properties for the body. Defaults to None.
             is_sun (bool, optional): Whether the body is the sun. Defaults to False.
@@ -171,10 +173,18 @@ class Body:
             label_node.setAlign(TextNode.ACenter)
             label_np = self._body.attachNewNode(label_node)
             label_np.setScale(self.label_scale)
-            label_np.setPos(0, 0, self.radius * 2.3 + 0.01)  # Slightly above the axis
+            if draw_3d_axes:
+                label_np.setPos(0, 0, self.radius * 2.3 + 0.01)  # Slightly above the axis
+            else:
+                label_np.setPos(0, 0, self.radius + 0.31)  # Slightly above the body
             label_np.setBillboardPointEye()
             label_np.setLightOff()
             self.body_label_np = label_np  # Store reference if you want to hide/show later
+
+            if label_on_top:
+                self.body_label_np.setBin('fixed', 100)  # Draw in a high-priority bin
+                self.body_label_np.setDepthTest(False)   # Don't test against the depth buffer
+                self.body_label_np.setDepthWrite(False)  # Don't write to the depth buffer
 
         self.is_sun = is_sun
         if self.is_sun:
@@ -189,6 +199,18 @@ class Body:
 
         # add to the list of bodies in the scene:
         self.parent.bodies.append(self)
+
+    def show_hide_label(self, show: bool):
+        """Show or hide the body's label.
+
+        Args:
+            show (bool): If True, show the label; if False, hide it.
+        """
+        if hasattr(self, 'body_label_np'):
+            if show:
+                self.body_label_np.show()
+            else:
+                self.body_label_np.hide()
 
     def _apply_daynight_shader(self, sun_dir=None):
         """Apply the day/night shader and textures to this body."""

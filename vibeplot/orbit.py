@@ -175,30 +175,57 @@ class Orbit:
         else:
             with open(filename, "r") as f:
                 data = json.load(f)
+                #...just a test...
+                # data['t'] = [t-data['t'][0] for t in data['t']]
+                # data['x'] = [x / 1000.0 for x in data['x']]
+                # data['y'] = [y / 1000.0 for y in data['y']]
+                # data['z'] = [z / 1000.0 for z in data['z']]
 
         if all(k in data for k in ("x", "y", "z", "t")):
             xs, ys, zs, ts = data["x"], data["y"], data["z"], data["t"]
             assert len(xs) == len(ys) == len(zs) == len(ts), "x, y, z, t must be same length"
-            self.trajectory_points = [Point3(x, y, z) for x, y, z in zip(xs, ys, zs)]
-            self.trajectory_times = ts
-            self.trajectory_options = data.get("options", {})
-
-            if "colors" in data and len(data["colors"]) == len(xs):
-                self.trajectory_colors = [tuple(c) for c in data["colors"]]
-            else:
-                self.trajectory_colors = None
-
-            if self.spline_mode == "cubic":
-                bc_type = 'periodic' if self.trajectory_options.get("loop", False) else 'not-a-knot'
-                self._splines = (
-                    CubicSpline(ts, xs, bc_type=bc_type),
-                    CubicSpline(ts, ys, bc_type=bc_type),
-                    CubicSpline(ts, zs, bc_type=bc_type),
-                )
-            else:
-                self._splines = None
+        elif 'segs' in data:
+            # halo format - read all the segs into one trajectory
+            print('reading trajectory from halo format')
+            xs = []
+            ys = []
+            zs = []
+            ts = []
+            for seg in data['segs']:
+                # sort since some are backwards propagated:
+                zipped_lists = zip(seg['et'], seg['x_inertial'], seg['y_inertial'], seg['z_inertial'])
+                sorted_zipped_lists = sorted(zipped_lists) # sort based on et
+                et, x, y, z = zip(*sorted_zipped_lists)
+                ts.extend(et[0:-2])  # skip the last point since it's the same as the first point in the next seg
+                xs.extend(x[0:-2])
+                ys.extend(y[0:-2])
+                zs.extend(z[0:-2])
+            #.. for now, just scale the data...
+            ts = [100.0*(t-ts[0])/ts[-1] for t in ts]  # 0 - 100
+            xs = [x / 1000.0 for x in xs]
+            ys = [y / 1000.0 for y in ys]
+            zs = [z / 1000.0 for z in zs]
         else:
-            raise ValueError("JSON must contain 'x', 'y', 'z', 't' arrays")
+            raise ValueError("JSON must contain 'x', 'y', 'z', 't' or 'seg' arrays")
+
+        self.trajectory_points = [Point3(x, y, z) for x, y, z in zip(xs, ys, zs)]
+        self.trajectory_times = ts
+        self.trajectory_options = data.get("options", {})
+
+        if "colors" in data and len(data["colors"]) == len(xs):
+            self.trajectory_colors = [tuple(c) for c in data["colors"]]
+        else:
+            self.trajectory_colors = None
+
+        if self.spline_mode == "cubic":
+            bc_type = 'periodic' if self.trajectory_options.get("loop", False) else 'not-a-knot'
+            self._splines = (
+                CubicSpline(ts, xs, bc_type=bc_type),
+                CubicSpline(ts, ys, bc_type=bc_type),
+                CubicSpline(ts, zs, bc_type=bc_type),
+            )
+        else:
+            self._splines = None
 
     def get_orbit_state(self, angle_or_time):
         """Return position on the orbit.
@@ -249,6 +276,7 @@ class Orbit:
             elif self.spline_mode in ("cubic", "linear") and (self._splines or self.spline_mode == "linear"):
                 ts = np.linspace(t_min, t_max, self.num_segments + 1)
             else:
+                print('use times as is')
                 ts = self.trajectory_times
         else:
             # Analytic orbit

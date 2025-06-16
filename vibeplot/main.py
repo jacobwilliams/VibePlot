@@ -55,7 +55,7 @@ MAX_TIME = 100.0  # temp: this represents the max time of the mission [will be u
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
 
-    def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = False):
+    def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = True):
         super().__init__()
 
         self.task_list = []  # list of (task, name) tuples
@@ -206,6 +206,7 @@ class EarthOrbitApp(ShowBase):
             day_tex="models/land_ocean_ice_cloud_2048.jpg",
             night_tex="models/2k_earth_nightmap.jpg",
             geojson_path="models/custom.geo.json",
+            # geojson_path="models/combined-with-oceans-1970.json",
             lon_rotate=180.0,  # Rotate to match texture orientation
             color=(1, 1, 1, 1),
             draw_grid=True,
@@ -272,21 +273,36 @@ class EarthOrbitApp(ShowBase):
             parent=self,
             central_body=self.earth,
             name="json_orbit_polar",
-            radius=EARTH_RADIUS * 5.0,  # not used for json orbit
+            #radius=EARTH_RADIUS * 5.0,  # not used for json orbit
             speed=8.0,
             orbit_json='models/test_orbit_2.json',
             spline_mode="cubic",  # linear or cubic
             time_step = 0.1,       # can specify time step for resplining
-            #num_segments=5,
-            color=(1, 0, 1, 1),
-            satellite_color=(1, 1, 1, 1),
-            thickness=1,
-            satellite_radius=0.1,
-            visibility_cone=False,
+            color=(1, 1, 1, 1),
             groundtrack=False,
             orbit_path_linestyle = 0  # short dash
         )
         # self.json_orbit_2.destroy()  # test - remove it
+
+        # test reading a trajectory in the halo output format:
+        # self.nrho_orbit = Orbit(
+        #     parent=self,
+        #     central_body=self.earth,
+        #     name="nrho_orbit",
+        #     label_text='NRHO',
+        #     radius=EARTH_RADIUS * 5.0,  # not used for json orbit
+        #     speed=8.0,
+        #     orbit_json='models/traj_20251229220000_L2_S_NREVS=20.json',
+        #     spline_mode = None,   # use the input times as is
+        #     num_segments = None,
+        #     color=(1, 0, 1, 1),
+        #     satellite_color=(1, 1, 1, 1),
+        #     thickness=1,
+        #     satellite_radius=0.1,
+        #     visibility_cone=False,
+        #     groundtrack=False,
+        #     orbit_path_linestyle = 0  # solid line
+        # )
 
         self.orbits = []
         for i in range(2):
@@ -406,7 +422,7 @@ class EarthOrbitApp(ShowBase):
                 lon_deg=site["lon_deg"],
                 trace_length=0,
                 color=(1, 0, 0, 1),  # Red color for visibility
-                label_scale=0.1,  # Adjust label size
+                label_scale=0.05,  # Adjust label size
                 draw_3d_axes=False  # Disable axes for simplicity
             )
 
@@ -460,10 +476,6 @@ class EarthOrbitApp(ShowBase):
                 gridlines.drawTo(plane_size, y, z)
             grid_np = self.render.attachNewNode(gridlines.create())
             grid_np.setTransparency(TransparencyAttrib.MAlpha)
-
-        # Add orbit task
-        self.orbit_radius = EARTH_RADIUS * 2.0
-        self.orbit_speed = 1.0 #0.5  # radians per second
 
         # Add a small sphere as the satellite
         self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
@@ -618,7 +630,7 @@ class EarthOrbitApp(ShowBase):
         # Create the DirectOptionMenu
         self.view_menu = DirectOptionMenu(
             text="View",
-            scale=0.07,
+            scale=0.05,
             items=self.menu_options,
             initialitem=0,
             highlightColor=(0.65, 0.65, 0.65, 1),
@@ -740,7 +752,7 @@ class EarthOrbitApp(ShowBase):
         if not view_distance:
             if isinstance(body, Site):
                 # a little closer for sites
-                view_distance = body.central_body.radius * 5.0
+                view_distance = body.radius * 1.5   #body.central_body.radius * 5.0
             else:
                 view_distance = body.radius * 10.0
 
@@ -1062,6 +1074,8 @@ class EarthOrbitApp(ShowBase):
                 label.show()
             else:
                 label.hide()
+        for b in self.bodies:
+            b.show_hide_label(self.labels_visible)
 
     def draw_axis_grid(self, thickness=2.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
         """Draws coordinate axes with hash marks at specified intervals.
@@ -1166,9 +1180,6 @@ class EarthOrbitApp(ShowBase):
         z_label_np.setBillboardPointEye()
         z_label_np.setLightOff()
 
-        # Store references to the labels (optional)
-        self.axis_labels = [x_label_np, y_label_np, z_label_np]
-
         if show_grid:
             grid = LineSegs()
             grid.setThickness(1.0)
@@ -1220,18 +1231,6 @@ class EarthOrbitApp(ShowBase):
                 self.movie_writer = None
             if self.taskMgr.hasTaskNamed("MovieWriterTask"):
                 self.taskMgr.remove("MovieWriterTask")
-
-    def on_mouse_click(self):
-        if self.mouseWatcherNode.hasMouse():
-            mpos = self.mouseWatcherNode.getMouse()
-            self.pickerRay.setFromLens(self.camNode, mpos.getX(), mpos.getY())
-            self.picker.traverse(self.render)
-            if self.pq.getNumEntries() > 0:
-                self.pq.sortEntries()
-                pickedObj = self.pq.getEntry(0).getIntoNodePath()
-                pos = pickedObj.getPos(self.render)
-                distance = (self.camera.getPos() - pos).length()
-                self.setup_camera_view(pos, distance)
 
     def add_task(self, task_func, name):
         """Adds a task to the task manager with a unique name.
