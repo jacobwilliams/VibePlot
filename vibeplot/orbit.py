@@ -318,6 +318,18 @@ class Orbit:
         orbit_np.setTransparency(True)
         return orbit_np
 
+    def show_hide_label(self, show: bool):
+        """Show or hide the orbits's label.
+
+        Args:
+            show (bool): If True, show the label; if False, hide it.
+        """
+        if hasattr(self, 'label_np') and self.label_np:
+            if show:
+                self.label_np.show()
+            else:
+                self.label_np.hide()
+
     def _create_visibility_cone(self, sat_pos):
         """Create visibility cone geometry"""
 

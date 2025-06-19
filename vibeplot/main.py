@@ -55,7 +55,7 @@ MAX_TIME = 100.0  # temp: this represents the max time of the mission [will be u
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
 
-    def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = True):
+    def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = False):
         super().__init__()
 
         self.task_list = []  # list of (task, name) tuples
@@ -443,7 +443,6 @@ class EarthOrbitApp(ShowBase):
                                         )
 
         if draw_plane:
-            print('draw plane')
             # --- Equatorial plane (square, translucent) ---
             plane_size = EARTH_RADIUS * 4.0  # Half-width of the square plane
             plane_color = (0.2, 0.6, 1.0, 0.3)  # RGBA, mostly transparent blue
@@ -1071,6 +1070,8 @@ class EarthOrbitApp(ShowBase):
             else:
                 label.hide()
         for b in self.bodies:
+            b.show_hide_label(self.labels_visible)
+        for b in self.orbits:
             b.show_hide_label(self.labels_visible)
 
     def draw_axis_grid(self, thickness=2.0, show_grid=False, tick_interval=1.0, tick_size=0.2):
