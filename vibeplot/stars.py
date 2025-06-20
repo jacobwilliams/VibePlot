@@ -14,75 +14,7 @@ from panda3d.core import (TextNode,
                           GeomNode,
                           GeomVertexArrayFormat)
 
-from .utilities import create_sphere
-
-
-CONSTELLATIONS = {
-    "orion": [
-        "betelgeuse", "bellatrix", "mintaka", "alnilam", "alnitak", "saiph", "rigel"
-    ],
-    "big_dipper": [
-        "dubhe", "merak", "phecda", "megrez", "alioth", "mizar", "alkaid"
-    ],
-    "cassiopeia": [
-        "schedar", "caph", "gamma cassiopeiae", "rho cassiopeiae", "segin"
-    ],
-    "cygnus": [
-        "deneb", "sadr", "gienah", "delta cygni", "albireo"
-    ],
-    "lyra": [
-        "vega", "sheliak", "sulafat"
-    ],
-    "taurus": [
-        "aldebaran", "ain", "alnath"
-    ],
-    "scorpius": [
-        "antareS", "shaula", "sargas", "dschubba"
-    ],
-    "leo": [
-        "regulus", "denebola", "algieba", "zeta leonis", "adhafera"
-    ],
-    "gemini": [
-        "castor", "pollux", "alhena", "wasat"
-    ],
-    "canis_major": [
-        "sirius", "mirzam", "adhara", "wezen", "aludra"
-    ],
-    "canis_minor": [
-        "procyon", "gomeisa"
-    ],
-    "aquila": [
-        "altair", "tarazed", "alshain"
-    ],
-    "perseus": [
-        "mirfak", "algol", "atiks"
-    ],
-    "crux": [
-        "acrux", "mimosa", "gacrux", "delta crucis"
-    ],
-    "centaurus": [
-        "rigil kentaurus", "hadar", "menkent"
-    ],
-    "aries": [
-        "hamal", "sheratan", "mesarthim"
-    ],
-    "andromeda": [
-        "almach", "mirach", "alpheratz"
-    ],
-    "corona_borealis": [
-        "alphecca", "nusakan"
-    ],
-    "ursa_minor": [
-        "polaris", "kochab", "pherkad"
-    ],
-    "pegasus": [
-        "markab", "scheat", "algenib", "enif"
-    ],
-    "summer_triangle": [
-        "vega", "deneb", "altair"
-    ],
-    # Add more as desired!
-}
+from .utilities import create_sphere, lonlat_to_xyz
 
 
 class Stars():
@@ -228,17 +160,51 @@ class Stars():
                 text_np.setPos(0, 0, size * 2.5)  # Offset above the star
                 text_np.setBillboardAxis()  # Make label always face the camera
 
-    def draw_constellations(self):
-        for name, star_list in CONSTELLATIONS.items():
-            segs = LineSegs()
-            segs.setThickness(1.0)
-            segs.setColor(1, 1, 0.5, 0.3)  # Light yellow
-            for i in range(len(star_list) - 1):
-                s1 = star_list[i].strip().lower()
-                s2 = star_list[i + 1].strip().lower()
-                if s1 in self.star_positions and s2 in self.star_positions:
-                    segs.moveTo(*self.star_positions[s1])
-                    segs.drawTo(*self.star_positions[s2])
+    def draw_constellations(self, filename: str = "models/inp_Constellation.txt", color = (1, 1, 0.5, 0.3), thickness: float = 1.0):
+        """
+        Reads a constellation outline file and draws the lines
+        Each line in the file is: dec1 ra1 dec2 ra2 # comment
+
+        ### Example:
+        ```
+        N Antlia
+        -37.1334 10.9450 -31.0658 10.4523 # Ant Iota,Ant Alpha
+        -31.0658 10.4523 -27.7655  9.7368 # Ant Alpha,Ant Theta
+        -27.7655  9.7368 -35.9474  9.4870 # Ant Theta,Ant Epsilon
+        ```
+        """
+
+        segs = LineSegs()
+        segs.setThickness(thickness)
+        segs.setColor(color)
+
+        with open(filename, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    # comment or empty line
+                    continue
+                if line[0].isalpha():
+                    # constellation name
+                    #print(line)  # could be used to label the constellation?
+                    continue
+                # Remove comments
+                if '#' in line:
+                    line = line.split('#', 1)[0]
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                try:
+                    dec1, ra1, dec2, ra2 = map(float, parts[:4])
+                    ra1 = ra1 * 15  # convert hours to degrees
+                    ra2 = ra2 * 15  # convert hours to degrees
+                except ValueError:
+                    continue
+                x1, y1, z1 = lonlat_to_xyz(ra1, dec1, self.star_sphere_radius)
+                x2, y2, z2 = lonlat_to_xyz(ra2, dec2, self.star_sphere_radius)
+                segs.moveTo(x1, y1, z1)
+                segs.drawTo(x2, y2, z2)
+
             constellation_np = self.star_sphere_np.attachNewNode(segs.create())
             constellation_np.setLightOff()
             constellation_np.setTransparency(True)

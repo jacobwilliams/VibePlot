@@ -11,7 +11,7 @@ from panda3d.core import (GeomVertexFormat,
                           Vec3,
                           LineSegs,
                           Point3)
-
+import numpy as np
 
 # lines styles are defined as (length, gap *[,length, gap])
 LINE_STYLES = [(1.0),                 # solid
@@ -20,6 +20,8 @@ LINE_STYLES = [(1.0),                 # solid
                (0.2, 0.3, 1.0, 0.3),  # dot-dash
                (0.2, 1.0),            # dot
                (2.0, 1.0)]            # long dash
+
+
 
 def lonlat_to_xyz(lon, lat, radius):
     lon_rad = math.radians(lon)
@@ -39,8 +41,8 @@ def create_body_fixed_arrow(body_radius: float, color=(1, 1, 1, 1)):
 def create_arrow(shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radius=0.3, color=(1, 1, 1, 1)):
     """Create an arrow NodePath pointing along +Y."""
     # Shaft (cylinder)
-    format = GeomVertexFormat.getV3n3c4()
-    vdata = GeomVertexData('arrow', format, Geom.UHStatic)
+    fmt = GeomVertexFormat.getV3n3c4()
+    vdata = GeomVertexData('arrow', fmt, Geom.UHStatic)
     vertex = GeomVertexWriter(vdata, 'vertex')
     normal = GeomVertexWriter(vdata, 'normal')
     color_writer = GeomVertexWriter(vdata, 'color')
@@ -102,8 +104,8 @@ def create_arrow(shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radiu
 def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
     """Create a sphere NodePath with specified radius, latitude and longitude divisions, and color."""
 
-    format = GeomVertexFormat.getV3n3c4t2()
-    vdata = GeomVertexData('sphere', format, Geom.UHStatic)
+    fmt = GeomVertexFormat.getV3n3c4t2()
+    vdata = GeomVertexData('sphere', fmt, Geom.UHStatic)
     vertex = GeomVertexWriter(vdata, 'vertex')
     normal = GeomVertexWriter(vdata, 'normal')
     color_writer = GeomVertexWriter(vdata, 'color')
@@ -169,8 +171,8 @@ def draw_path(parent, pts, linestyle: int = 0, colors=None):
     if colors is not None and len(colors) != len(pts):
         raise ValueError("colors must be the same length as pts")
 
-    format = GeomVertexFormat.getV3cp()
-    vdata = GeomVertexData('line', format, Geom.UHStatic)
+    fmt = GeomVertexFormat.getV3cp()
+    vdata = GeomVertexData('line', fmt, Geom.UHStatic)
     vertex = GeomVertexWriter(vdata, 'vertex')
     color_writer = GeomVertexWriter(vdata, 'color')
 
@@ -236,8 +238,19 @@ def draw_path(parent, pts, linestyle: int = 0, colors=None):
             i += 1
 
     node.addGeom(geom)
-    np = parent.attachNewNode(node)
-    np.setTransparency(True)
-    np.setLightOff()
-    np.setTwoSided(True)
-    return np
+    path_np = parent.attachNewNode(node)
+    path_np.setTransparency(True)
+    path_np.setLightOff()
+    path_np.setTwoSided(True)
+    return path_np
+
+def simple_propagator(radius: float, inclination_deg: float, et: float, speed: float = 1.0) -> np.array:
+    """Simple propagator for an orbit, given radius and inclination."""
+    # Analytic orbit for testing purposes
+
+    angle = et * speed
+    inclination = np.radians(inclination_deg)  # Convert inclination to radians
+    x = radius * math.cos(angle)
+    y = radius * math.sin(angle) * math.cos(inclination)
+    z = radius * math.sin(angle) * math.sin(inclination)
+    return np.array([x, y, z])  #Point3(x, y, z)

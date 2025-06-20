@@ -5,7 +5,12 @@ from direct.showbase.ShowBase import ShowBase
 from panda3d.core import Point3, Vec3, Mat3, Quat, LineSegs, TextNode, TextureStage, Shader, LVector3, Material, BitMask32
 from direct.task import Task
 
-from .utilities import create_sphere, lonlat_to_xyz, create_body_fixed_arrow
+from .utilities import (create_sphere,
+                        lonlat_to_xyz,
+                        create_body_fixed_arrow,
+                        draw_path,
+                        simple_propagator)
+from .path import Path
 
 EARTH_RADIUS = 2.0  # Default radius for Earth-like bodies, can be adjusted
 # ... need to avoid setting this here ...
@@ -32,6 +37,12 @@ class Body:
                  parent : ShowBase,
                  name: str,
                  radius : float,
+                 et0: float = 0.0,
+                 etf: float = 100.0,
+                 et_step: float = 1.0,
+                 num_segments: int = 500,
+                 time_step: float = None,
+                 spline_mode: str = "cubic",  # "linear" or "cubic"
                  get_position_vector = None,
                  get_rotation_matrix = None,
                  color=(1, 1, 1, 1),
@@ -39,6 +50,8 @@ class Body:
                  day_tex : str = None,
                  night_tex : str = None,
                  sun_dir = LVector3(0, 0, 1),
+                 thickness: float = 2.0,
+                 trajectory_mode: int = 1,  # 0: trace, 1: full trajectory
                  trace_length: int = 200,
                  trace_color=(0.7, 0.7, 1, 1),
                  geojson_path : str = None,
@@ -67,6 +80,7 @@ class Body:
             day_tex (str, optional): Path to the day texture file. Defaults to None.
             night_tex (str, optional): Path to the night texture file. Defaults to None.
             sun_dir (LVector3, optional): Direction of the sun for lighting. Defaults to (0, 0, 1).
+            thickness (float, optional): Thickness of the orbit path line. Defaults to 2.0.
             trace_length (int, optional): Length of the trace path. Defaults to 200.
             trace_color (tuple, optional): RGBA color of the trace. Defaults to (0.7, 0.7, 1, 1).
             geojson_path (str, optional): Path to the GeoJSON file for country boundaries. Defaults to None.
@@ -98,6 +112,13 @@ class Body:
             self.get_rotation_matrix = self._get_rotation_matrix
         self.label_scale = label_scale
         self.trace_color = trace_color
+        self.spline_mode = spline_mode  # "linear" or "cubic"
+
+        self.num_segments = num_segments
+        self.time_step = time_step
+        self.et0 = et0
+        self.etf = etf
+        self.et_step = et_step
 
         self.orbit_markers_np = None
         self.orbit_markers = orbit_markers
@@ -156,10 +177,36 @@ class Body:
 
         self.parent.add_task(self.orbit_task, f"{self.name}OrbitTask")
 
-        self.trace_length = trace_length  # Number of points to keep in the moon's trace
-        if self.trace_length:
-            self._trace = []
-            self._trace_node = self.parent.render.attachNewNode(f"{self._body}_trace")
+        self.trajectory_mode = trajectory_mode
+        self.thickness = thickness
+        if self.trajectory_mode == 1:
+            # draw the full trajectory
+            self.trace_length = 0 # do not draw the trace
+            #self.draw_trajectory(None, color=self.color)
+            #TODO add the trace code to this class as an option ...
+            #pts = []
+            orbit_json = {'t': [], 'x': [], 'y': [], 'z': []}
+            for et in np.arange(self.et0, self.etf, self.et_step):
+                r = self.get_position_vector(et)
+                orbit_json['t'].append(et)
+                orbit_json['x'].append(r[0])
+                orbit_json['y'].append(r[1])
+                orbit_json['z'].append(r[2])
+            self.path = Path(parent = self.parent,
+                             spline_mode = self.spline_mode,
+                             color = self.color,
+                             thickness = self.thickness,
+                             orbit_json = orbit_json,
+                             num_segments = self.num_segments,
+                             time_step = self.time_step,
+                            )
+        else:
+            self.path = None
+            # draw trajectory using the fading trace
+            self.trace_length = trace_length  # Number of points to keep in the moon's trace
+            if self.trace_length:
+                self._trace = []
+                self._trace_node = self.parent.render.attachNewNode(f"{self._body}_trace")
 
         if draw_3d_axes:
             # 3D axes for the body
@@ -199,6 +246,30 @@ class Body:
 
         # add to the list of bodies in the scene:
         self.parent.bodies.append(self)
+
+    # def draw_trajectory(self, pts = None, color=(1,1,1,1), linestyle: int = 0):
+
+    #     # PROBLEM: the body calls get_position_vector separately, so it
+    #     # doesn't follow this path. we need to replace with what is done
+    #     # in Orbit. should commonize that code so we can call it here (also for the task).
+    #     # TODO
+
+    #     if not pts:
+    #         # if no points, generate them here
+    #         pts = []
+    #         for et in range(0, 100, 10):    # et0, etf, delta should be inputs !
+    #             r = self.get_position_vector(et)
+    #             pts.append(Point3(r[0], r[1], r[2]))
+
+    #     orbit_np = draw_path(self.parent.render, pts, linestyle=linestyle, colors=[color]*len(pts))
+    #     orbit_np.setRenderModeThickness(self.thickness)
+    #     orbit_np.setLightOff()
+    #     orbit_np.setTextureOff()
+    #     orbit_np.setShaderOff()
+    #     orbit_np.clearColor()
+    #     orbit_np.setTwoSided(True)
+    #     orbit_np.setTransparency(True)
+    #     return orbit_np
 
     def show_hide_label(self, show: bool):
         """Show or hide the body's label.
@@ -358,46 +429,34 @@ class Body:
         if self.name.lower() == "earth":
             return np.array([0.0, 0.0, 0.0])
 
-        elif self.name.lower() == "sun":
-            # return np.array([-100.0, 0.0, 0.0])
+            # .... doesn't work since some of the code is assuming earth is a 0,0,0 ?
+            # earth_orbit_radius = EARTH_RADIUS * 0.5  # Distance from Earth center
+            # earth_orbit_speed = 0.7  # radians per second
+            # return simple_propagator(earth_orbit_radius, 0.0, et, earth_orbit_speed)
 
+        elif self.name.lower() == "sun":
             sun_orbit_radius = EARTH_RADIUS * 10  # Distance from Earth center
             sun_orbit_speed = 0.7  # radians per second
-            angle = et * sun_orbit_speed
-            x = sun_orbit_radius * math.cos(angle)
-            y = sun_orbit_radius * math.sin(angle)
-            z = 0
-            return np.array([x, y, z])
+            return simple_propagator(sun_orbit_radius, 10.0, et, sun_orbit_speed)
 
         # Moon orbits Earth
         elif self.name.lower() == "moon":
             # Use the same parameters as before
             moon_orbit_radius = EARTH_RADIUS * 5  # Distance from Earth center
             moon_orbit_speed = 0.7  # radians per second
-            angle = et * moon_orbit_speed
-            x = moon_orbit_radius * math.cos(angle)
-            y = moon_orbit_radius * math.sin(angle)
-            z = 0
-            return np.array([x, y, z])
+            return simple_propagator(moon_orbit_radius, 5.0, et, moon_orbit_speed)
 
         # Mars orbits Earth (for demo)
         elif self.name.lower() == "mars":
             mars_orbit_radius = EARTH_RADIUS * 6
             mars_orbit_speed = 0.5  # radians per second
-            angle = et * mars_orbit_speed
-            x = mars_orbit_radius * math.cos(angle)
-            y = mars_orbit_radius * math.sin(angle)
-            z = 0
-            return np.array([x, y, z])
+            return simple_propagator(mars_orbit_radius, 2.0, et, mars_orbit_speed)
 
         # Venus (example, you can adjust as needed)
         elif self.name.lower() == "venus":
             venus_orbit_radius = EARTH_RADIUS * 7
-            angle = et * 0.3  # example speed
-            x = venus_orbit_radius * math.cos(angle)
-            y = venus_orbit_radius * math.sin(angle)
-            z = 0
-            return np.array([x, y, z])
+            venus_orbit_speed = 0.3
+            return simple_propagator(venus_orbit_radius, 1.0, et, venus_orbit_speed)
 
         # Default: stationary at origin
         return np.array([0.0, 0.0, 0.0])
@@ -500,7 +559,7 @@ class Body:
         # Default: identity
         return np.eye(3)
 
-    def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001):
+    def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001, thickness: float = 1.2, color = (1, 1, 1, 0.5)):
         """Draws country boundaries on the body using a GeoJSON file.
 
         Args:
@@ -513,8 +572,8 @@ class Body:
             data = json.load(f)
 
         segs = LineSegs()
-        segs.setThickness(1.2)
-        segs.setColor(1, 1, 1, 0.5)
+        segs.setThickness(thickness)
+        segs.setColor(color)
 
         for feature in data['features']:
             for coords in feature['geometry']['coordinates']:
@@ -560,7 +619,10 @@ class Body:
         if self.__class__.__name__ != 'Site':
             # don't update the rotator if it's a site
             self.set_orientation(et)
-            r = self.get_position_vector(et)
+            if self.path:
+                r = self.path.get_orbit_state(et)    # use the path class
+            else:
+                r = self.get_position_vector(et)
             # Get the new position
             new_pos = Point3(r[0], r[1], r[2])
             self._rotator.setPos(new_pos)
@@ -598,7 +660,7 @@ class Body:
             # Draw trace and add markers
             if len(self._trace) > 1:
                 segs = LineSegs()
-                segs.setThickness(3.0)
+                segs.setThickness(self.thickness)
 
                 # Decide how many markers to create
                 marker_interval = max(1, len(self._trace) // (self.trace_length // self.marker_interval))
@@ -675,7 +737,7 @@ class Body:
 
         return Task.cont
 
-    def draw_lat_lon_grid(self, num_lat=9, num_lon=18, radius_pad=0.01, color=(1, 1, 1, 1), thickness=2.0):
+    def draw_lat_lon_grid(self, num_lat=10, num_lon=16, radius_pad=0.01, color=(1, 1, 1, 1), thickness=2.0):
         """Draws latitude and longitude grid lines on the body.
 
         Args:

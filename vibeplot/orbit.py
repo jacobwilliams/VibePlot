@@ -8,6 +8,7 @@ import numpy as np
 
 from .bodies import Body
 from .utilities import create_sphere, draw_path
+from .path import Path
 
 class Orbit:
     def __init__(self, parent,
@@ -72,7 +73,7 @@ class Orbit:
         self.name = name
         self.radius = radius
         self.speed = speed
-        self.inclination = math.radians(inclination_deg)
+        self.inclination_deg = inclination_deg
         self.color = color
         self.thickness = thickness
         self.satellite_radius = satellite_radius
@@ -86,6 +87,7 @@ class Orbit:
         self.label_np = None
         self.orbit_path_linestyle = orbit_path_linestyle  # 0: solid, 1: dashed
         self.groundtrack_thickness = groundtrack_thickness
+        self.show_orbit_path = show_orbit_path
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -104,8 +106,8 @@ class Orbit:
         self.trajectory_points = None
         self.trajectory_times = None
         self.trajectory_colors = None
-        if orbit_json:
-            self._load_trajectory_from_json(orbit_json)
+        # if orbit_json:
+        #     self._load_trajectory_from_json(orbit_json)
 
         # Create the satellite
         self.satellite = self._create_satellite()
@@ -124,10 +126,27 @@ class Orbit:
             self.label_np = None
 
         # Create orbit path
-        if show_orbit_path:
-            self.orbit_path_np = self._create_orbit_path()
-        else:
-            self.orbit_path_np = None
+        # if show_orbit_path:
+        #     self.orbit_path_np = self._create_orbit_path()
+        # else:
+        #     self.orbit_path_np = None
+
+        # Create orbit path
+        self.path = Path(parent = self.parent,
+                         orbit_json = self.orbit_json,
+                         spline_mode = self.spline_mode,
+                         orbit_path_linestyle = self.orbit_path_linestyle,
+                         color = self.color,
+                         thickness = self.thickness,
+                         num_segments = self.num_segments,
+                         time_step = self.time_step,
+                         inclination_deg = self.inclination_deg,
+                         radius = self.radius,
+                         show_orbit_path = self.show_orbit_path,
+                        )
+        self.orbit_path_np = self.path.orbit_path_np   # for now do this to match old way
+        self._orbit_path_pts = self.path._orbit_path_pts
+        self._orbit_path_ts = self.path._orbit_path_ts
 
         # to pulsate the orbit line:
         # self.add_task(self.pulsate_orbit_line_task, "PulsateOrbitLineTask")
@@ -167,156 +186,156 @@ class Orbit:
             satellite.setLightOff()  # Disable lighting for visibility
         return satellite
 
-    def _load_trajectory_from_json(self, filename : str | dict):
+    # def _load_trajectory_from_json(self, filename : str | dict):
 
-        if isinstance(filename, dict):
-            # If filename is a dict, assume it's already loaded JSON data
-            data = filename
-        else:
-            with open(filename, "r") as f:
-                data = json.load(f)
-                #...just a test...
-                # data['t'] = [t-data['t'][0] for t in data['t']]
-                # data['x'] = [x / 1000.0 for x in data['x']]
-                # data['y'] = [y / 1000.0 for y in data['y']]
-                # data['z'] = [z / 1000.0 for z in data['z']]
+    #     if isinstance(filename, dict):
+    #         # If filename is a dict, assume it's already loaded JSON data
+    #         data = filename
+    #     else:
+    #         with open(filename, "r") as f:
+    #             data = json.load(f)
+    #             #...just a test...
+    #             # data['t'] = [t-data['t'][0] for t in data['t']]
+    #             # data['x'] = [x / 1000.0 for x in data['x']]
+    #             # data['y'] = [y / 1000.0 for y in data['y']]
+    #             # data['z'] = [z / 1000.0 for z in data['z']]
 
-        if all(k in data for k in ("x", "y", "z", "t")):
-            xs, ys, zs, ts = data["x"], data["y"], data["z"], data["t"]
-            assert len(xs) == len(ys) == len(zs) == len(ts), "x, y, z, t must be same length"
-        elif 'segs' in data:
-            # halo format - read all the segs into one trajectory
-            print('reading trajectory from halo format')
-            xs = []
-            ys = []
-            zs = []
-            ts = []
-            for seg in data['segs']:
-                # sort since some are backwards propagated:
-                zipped_lists = zip(seg['et'], seg['x_inertial'], seg['y_inertial'], seg['z_inertial'])
-                sorted_zipped_lists = sorted(zipped_lists) # sort based on et
-                et, x, y, z = zip(*sorted_zipped_lists)
-                ts.extend(et[0:-2])  # skip the last point since it's the same as the first point in the next seg
-                xs.extend(x[0:-2])
-                ys.extend(y[0:-2])
-                zs.extend(z[0:-2])
-            #.. for now, just scale the data...
-            ts = [100.0*(t-ts[0])/ts[-1] for t in ts]  # 0 - 100
-            xs = [x / 1000.0 for x in xs]
-            ys = [y / 1000.0 for y in ys]
-            zs = [z / 1000.0 for z in zs]
-        else:
-            raise ValueError("JSON must contain 'x', 'y', 'z', 't' or 'seg' arrays")
+    #     if all(k in data for k in ("x", "y", "z", "t")):
+    #         xs, ys, zs, ts = data["x"], data["y"], data["z"], data["t"]
+    #         assert len(xs) == len(ys) == len(zs) == len(ts), "x, y, z, t must be same length"
+    #     elif 'segs' in data:
+    #         # halo format - read all the segs into one trajectory
+    #         print('reading trajectory from halo format')
+    #         xs = []
+    #         ys = []
+    #         zs = []
+    #         ts = []
+    #         for seg in data['segs']:
+    #             # sort since some are backwards propagated:
+    #             zipped_lists = zip(seg['et'], seg['x_inertial'], seg['y_inertial'], seg['z_inertial'])
+    #             sorted_zipped_lists = sorted(zipped_lists) # sort based on et
+    #             et, x, y, z = zip(*sorted_zipped_lists)
+    #             ts.extend(et[0:-2])  # skip the last point since it's the same as the first point in the next seg
+    #             xs.extend(x[0:-2])
+    #             ys.extend(y[0:-2])
+    #             zs.extend(z[0:-2])
+    #         #.. for now, just scale the data...
+    #         ts = [100.0*(t-ts[0])/ts[-1] for t in ts]  # 0 - 100
+    #         xs = [x / 1000.0 for x in xs]
+    #         ys = [y / 1000.0 for y in ys]
+    #         zs = [z / 1000.0 for z in zs]
+    #     else:
+    #         raise ValueError("JSON must contain 'x', 'y', 'z', 't' or 'seg' arrays")
 
-        self.trajectory_points = [Point3(x, y, z) for x, y, z in zip(xs, ys, zs)]
-        self.trajectory_times = ts
-        self.trajectory_options = data.get("options", {})
+    #     self.trajectory_points = [Point3(x, y, z) for x, y, z in zip(xs, ys, zs)]
+    #     self.trajectory_times = ts
+    #     self.trajectory_options = data.get("options", {})
 
-        if "colors" in data and len(data["colors"]) == len(xs):
-            self.trajectory_colors = [tuple(c) for c in data["colors"]]
-        else:
-            self.trajectory_colors = None
+    #     if "colors" in data and len(data["colors"]) == len(xs):
+    #         self.trajectory_colors = [tuple(c) for c in data["colors"]]
+    #     else:
+    #         self.trajectory_colors = None
 
-        if self.spline_mode == "cubic":
-            bc_type = 'periodic' if self.trajectory_options.get("loop", False) else 'not-a-knot'
-            self._splines = (
-                CubicSpline(ts, xs, bc_type=bc_type),
-                CubicSpline(ts, ys, bc_type=bc_type),
-                CubicSpline(ts, zs, bc_type=bc_type),
-            )
-        else:
-            self._splines = None
+    #     if self.spline_mode == "cubic":
+    #         bc_type = 'periodic' if self.trajectory_options.get("loop", False) else 'not-a-knot'
+    #         self._splines = (
+    #             CubicSpline(ts, xs, bc_type=bc_type),
+    #             CubicSpline(ts, ys, bc_type=bc_type),
+    #             CubicSpline(ts, zs, bc_type=bc_type),
+    #         )
+    #     else:
+    #         self._splines = None
 
-    def get_orbit_state(self, angle_or_time):
-        """Return position on the orbit.
-        - If using JSON, angle_or_time is interpreted as time and returns interpolated position.
-        - Otherwise, returns analytic orbit position for given angle.
-        """
-        if self.trajectory_points and self.trajectory_times:
-            t = angle_or_time
-            times = self.trajectory_times
-            points = self.trajectory_points
-            if self._splines:
-                # Cubic spline interpolation
-                x = float(self._splines[0](t))
-                y = float(self._splines[1](t))
-                z = float(self._splines[2](t))
-                return Point3(x, y, z)
-            else:
-                # Linear interpolation
-                if t <= times[0]:
-                    return points[0]
-                if t >= times[-1]:
-                    return points[-1]
-                i = bisect.bisect_right(times, t) - 1
-                t0, t1 = times[i], times[i+1]
-                p0, p1 = points[i], points[i+1]
-                alpha = (t - t0) / (t1 - t0)
-                return p0 * (1 - alpha) + p1 * alpha
-        else:
-            # Analytic orbit
-            x = self.radius * math.cos(angle_or_time)
-            y = self.radius * math.sin(angle_or_time)
-            z = 0
-            y_incl = y * math.cos(self.inclination) - z * math.sin(self.inclination)
-            z_incl = y * math.sin(self.inclination) + z * math.cos(self.inclination)
-            return Point3(x, y_incl, z_incl)
+    # def get_orbit_state(self, angle_or_time):
+    #     """Return position on the orbit.
+    #     - If using JSON, angle_or_time is interpreted as time and returns interpolated position.
+    #     - Otherwise, returns analytic orbit position for given angle.
+    #     """
+    #     if self.trajectory_points and self.trajectory_times:
+    #         t = angle_or_time
+    #         times = self.trajectory_times
+    #         points = self.trajectory_points
+    #         if self._splines:
+    #             # Cubic spline interpolation
+    #             x = float(self._splines[0](t))
+    #             y = float(self._splines[1](t))
+    #             z = float(self._splines[2](t))
+    #             return Point3(x, y, z)
+    #         else:
+    #             # Linear interpolation
+    #             if t <= times[0]:
+    #                 return points[0]
+    #             if t >= times[-1]:
+    #                 return points[-1]
+    #             i = bisect.bisect_right(times, t) - 1
+    #             t0, t1 = times[i], times[i+1]
+    #             p0, p1 = points[i], points[i+1]
+    #             alpha = (t - t0) / (t1 - t0)
+    #             return p0 * (1 - alpha) + p1 * alpha
+    #     else:
+    #         # Analytic orbit
+    #         x = self.radius * math.cos(angle_or_time)
+    #         y = self.radius * math.sin(angle_or_time)
+    #         z = 0
+    #         y_incl = y * math.cos(self.inclination) - z * math.sin(self.inclination)
+    #         z_incl = y * math.sin(self.inclination) + z * math.cos(self.inclination)
+    #         return Point3(x, y_incl, z_incl)
 
-    def _create_orbit_path(self):
-        """Create the orbital path visualization, using time_step if set, otherwise num_segments for interpolation modes."""
+    # def _create_orbit_path(self):
+    #     """Create the orbital path visualization, using time_step if set, otherwise num_segments for interpolation modes."""
 
-        orbit_segs = LineSegs()
-        orbit_segs.setThickness(self.thickness)
-        orbit_segs.setColor(*self.color)
+    #     orbit_segs = LineSegs()
+    #     orbit_segs.setThickness(self.thickness)
+    #     orbit_segs.setColor(*self.color)
 
-        if self.trajectory_points and self.trajectory_times:
-            t_min, t_max = self.trajectory_times[0], self.trajectory_times[-1]
-            if self.time_step is not None:
-                ts = np.arange(t_min, t_max + self.time_step, self.time_step)
-            elif self.spline_mode in ("cubic", "linear") and (self._splines or self.spline_mode == "linear"):
-                ts = np.linspace(t_min, t_max, self.num_segments + 1)
-            else:
-                print('use times as is')
-                ts = self.trajectory_times
-        else:
-            # Analytic orbit
-            if self.time_step is not None:
-                angle_max = 2 * math.pi
-                ts = np.arange(0, angle_max + self.time_step, self.time_step)
-            else:
-                ts = [2 * math.pi * i / self.num_segments for i in range(self.num_segments + 1)]
+    #     if self.trajectory_points and self.trajectory_times:
+    #         t_min, t_max = self.trajectory_times[0], self.trajectory_times[-1]
+    #         if self.time_step is not None:
+    #             ts = np.arange(t_min, t_max + self.time_step, self.time_step)
+    #         elif self.spline_mode in ("cubic", "linear") and (self._splines or self.spline_mode == "linear"):
+    #             ts = np.linspace(t_min, t_max, self.num_segments + 1)
+    #         else:
+    #             print('use times as is')
+    #             ts = self.trajectory_times
+    #     else:
+    #         # Analytic orbit
+    #         if self.time_step is not None:
+    #             angle_max = 2 * math.pi
+    #             ts = np.arange(0, angle_max + self.time_step, self.time_step)
+    #         else:
+    #             ts = [2 * math.pi * i / self.num_segments for i in range(self.num_segments + 1)]
 
-        pts = [self.get_orbit_state(t) for t in ts]   #self.sample_orbit_path(ts)
-        self._orbit_path_ts = ts
-        self._orbit_path_pts = pts
+    #     pts = [self.get_orbit_state(t) for t in ts]   #self.sample_orbit_path(ts)
+    #     self._orbit_path_ts = ts
+    #     self._orbit_path_pts = pts
 
-        # --- Prepare per-point colors, resampled if needed ---
-        if self.trajectory_colors and self.trajectory_times:
-            # Interpolate colors at the new ts
-            orig_times = np.array(self.trajectory_times)
-            orig_colors = np.array(self.trajectory_colors)  # shape: (N, 4)
-            ts_arr = np.array(ts)
+    #     # --- Prepare per-point colors, resampled if needed ---
+    #     if self.trajectory_colors and self.trajectory_times:
+    #         # Interpolate colors at the new ts
+    #         orig_times = np.array(self.trajectory_times)
+    #         orig_colors = np.array(self.trajectory_colors)  # shape: (N, 4)
+    #         ts_arr = np.array(ts)
 
-            # Interpolate each channel separately
-            resampled_colors = []
-            for k in range(4):  # RGBA channels
-                channel = orig_colors[:, k]
-                interp = np.interp(ts_arr, orig_times, channel)
-                resampled_colors.append(interp)
-            # Stack back into (len(ts), 4)
-            colors = np.stack(resampled_colors, axis=1)
-            colors = [tuple(c) for c in colors]
-        else:
-            colors = [self.color] * len(pts)
+    #         # Interpolate each channel separately
+    #         resampled_colors = []
+    #         for k in range(4):  # RGBA channels
+    #             channel = orig_colors[:, k]
+    #             interp = np.interp(ts_arr, orig_times, channel)
+    #             resampled_colors.append(interp)
+    #         # Stack back into (len(ts), 4)
+    #         colors = np.stack(resampled_colors, axis=1)
+    #         colors = [tuple(c) for c in colors]
+    #     else:
+    #         colors = [self.color] * len(pts)
 
-        orbit_np = draw_path(self.parent.render, pts, linestyle=self.orbit_path_linestyle, colors=colors)
-        orbit_np.setRenderModeThickness(self.thickness)
-        orbit_np.setLightOff()
-        orbit_np.setTextureOff()
-        orbit_np.setShaderOff()
-        orbit_np.clearColor()
-        orbit_np.setTransparency(True)
-        return orbit_np
+    #     orbit_np = draw_path(self.parent.render, pts, linestyle=self.orbit_path_linestyle, colors=colors)
+    #     orbit_np.setRenderModeThickness(self.thickness)
+    #     orbit_np.setLightOff()
+    #     orbit_np.setTextureOff()
+    #     orbit_np.setShaderOff()
+    #     orbit_np.clearColor()
+    #     orbit_np.setTransparency(True)
+    #     return orbit_np
 
     def show_hide_label(self, show: bool):
         """Show or hide the orbits's label.
@@ -576,21 +595,21 @@ class Orbit:
         """Change the orbital speed"""
         self.speed = speed
 
-    def set_color(self, color):
-        """Change the orbit path color"""
-        self.color = color
-        if self.orbit_path_np:
-            # Recreate the orbit path with new color
-            self.orbit_path_np.removeNode()
-            self.orbit_path_np = self._create_orbit_path()
+    # def set_color(self, color):
+    #     """Change the orbit path color"""
+    #     self.color = color
+    #     if self.orbit_path_np:
+    #         # Recreate the orbit path with new color
+    #         self.orbit_path_np.removeNode()
+    #         self.orbit_path_np = self._create_orbit_path()
 
-    def show_orbit_path(self, show=True):
-        """Show or hide the orbit path"""
-        if self.orbit_path_np:
-            if show:
-                self.orbit_path_np.show()
-            else:
-                self.orbit_path_np.hide()
+    # def show_orbit_path(self, show=True):
+    #     """Show or hide the orbit path"""
+    #     if self.orbit_path_np:
+    #         if show:
+    #             self.orbit_path_np.show()
+    #         else:
+    #             self.orbit_path_np.hide()
 
     def destroy(self):
         """Clean up the orbit"""

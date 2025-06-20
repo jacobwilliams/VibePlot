@@ -313,7 +313,7 @@ class EarthOrbitApp(ShowBase):
                       name=name,
                       radius=EARTH_RADIUS * 10.0,
                       speed=2.0,
-                      inclination_deg=i*10,
+                      inclination_deg=40 + i*10,
                       spline_mode="cubic",  # linear or cubic
                       time_step = 0.1,  # can specify time step for resplining
                       label_text=name,
@@ -381,10 +381,11 @@ class EarthOrbitApp(ShowBase):
                           orbit_markers=True,
                           marker_size=0.06,
                           marker_interval=5,
-                          marker_color=(1, 1, 1, 0.5)
+                          marker_color=(1, 1, 1, 0.5),
+                          trajectory_mode=0, #trace
                           )
 
-        venus_site = Site(parent=self, name='P1', label_scale=0.1, central_body=self.venus, lat_deg=40, radius = 0.01, radius_offset = 0.02, lon_deg=-105, color = (0, 0, 1, 1), trace_color = (1, 0, 0, 1)) #, show_axes=True)
+        venus_site = Site(parent=self, name='P1', label_scale=0.1, central_body=self.venus, lat_deg=40, radius = 0.01, radius_offset = 0.02, lon_deg=-105, color = (0, 0, 1, 1), trajectory_mode = 0, trace_color = (1, 0, 0, 1)) #, show_axes=True)
 
         self.venus_orbiter = Orbit(parent=self,
                                    central_body=self.venus,
@@ -397,7 +398,8 @@ class EarthOrbitApp(ShowBase):
                                    satellite_color=(1, 1, 1, 1),
                                    visibility_cone=True,
                                    groundtrack=True,
-                                   groundtrack_length = 400
+                                   groundtrack_length = 400,
+                                   show_orbit_path=False, # don't show the orbit path
                                 )
 
         self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=40, lon_deg=-105, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
@@ -439,7 +441,8 @@ class EarthOrbitApp(ShowBase):
                                           satellite_color=(inc/360, inc/360, 0, 1),
                                           visibility_cone=False,
                                           groundtrack=False,
-                                          enable_shadow=False
+                                          enable_shadow=False,
+                                          show_orbit_path=False  # don't show the orbit
                                         )
 
         if draw_plane:
