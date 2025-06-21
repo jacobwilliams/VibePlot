@@ -364,14 +364,18 @@ class EarthOrbitApp(ShowBase):
                     color=(1, 1, 0, 1),
                     draw_3d_axes=False,
                     is_sun=True,  # use this as the light source
-                )
+                    show_orbit_path = False,  # test
+                    trace_mode=True, # test
+                    trace_dt=2.0,    # test
+                 )
+
 
         self.mars = Body(
             self,
             name="Mars",
             radius=MARS_RADIUS,
             texture="models/2k_mars.jpg",
-            color=(1, 1, 1, 1),
+            color=(1, 0, 0, 1),
             draw_grid=True,
             draw_3d_axes=True
         )

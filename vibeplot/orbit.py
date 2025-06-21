@@ -410,7 +410,6 @@ class Orbit:
 
         return base_points
 
-
     def _create_cone_outline(self, base_points):
         """Create the outline of the visibility cone"""
         if hasattr(self, "cone_outline_np") and self.cone_outline_np:
@@ -541,6 +540,11 @@ class Orbit:
         if self.parent.paused:
             return Task.cont
 
+        et = self.parent.get_et(task)
+
+        if self.path:
+            self.path.update_trace(et)
+
         ts = self._orbit_path_ts
         pts = self._orbit_path_pts
         n = len(ts)
@@ -550,7 +554,6 @@ class Orbit:
         # Compute parameter t for current time
         t_min, t_max = ts[0], ts[-1]
         total_time = t_max - t_min
-        et = self.parent.get_et(task)
         t = (et * self.speed) % total_time + t_min if getattr(self, "trajectory_options", {}).get("loop", True) else min(et * self.speed + t_min, t_max)
 
         # Find the segment

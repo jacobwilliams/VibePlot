@@ -25,7 +25,9 @@ class Path():
                  radius: float = None,
                  inclination_deg: float = 0.0,
                  speed: float = 1.0,
-                 show_orbit_path: bool = True,
+                 show_orbit_path: bool = True,  # test
+                 trace_mode=False, # test
+                 trace_dt=2.0,    # test
                  ):
         """
         Initialize the Path object by loading trajectory data from a JSON file or dictionary.
@@ -45,6 +47,9 @@ class Path():
         self.spline_mode = spline_mode
         self.orbit_json = orbit_json
         self.show_orbit_path = show_orbit_path
+        self.trace_mode = trace_mode
+        self.trace_dt = trace_dt
+        self.trace_np = None  # NodePath for the trace
 
         # Initialize trajectory data
         self.trajectory_points = None
@@ -57,6 +62,29 @@ class Path():
 
         # Create the path
         self.orbit_path_np = self._create_orbit_path()
+
+    def update_trace(self, current_time: float):
+        """Update the trace segment for the current time."""
+        if not self.trace_mode or self.trajectory_points is None or self.trajectory_times is None:
+            return
+
+        t0 = max(self.trajectory_times[0], current_time - self.trace_dt)
+        t1 = min(self.trajectory_times[-1], current_time)
+        # Sample points between t0 and t1
+        num_trace_pts = 50
+        ts = np.linspace(t0, t1, num_trace_pts)
+        pts = [self.get_orbit_state(t) for t in ts]
+
+        # Alpha fades from 0 (oldest) to 1 (newest)
+        colors = [(self.color[0], self.color[1], self.color[2], float(i) / (num_trace_pts - 1)) for i in range(num_trace_pts)]
+
+        # Remove previous trace
+        if self.trace_np:
+            self.trace_np.removeNode()
+        self.trace_np = draw_path(self.parent.render, pts, linestyle=0, colors=colors)
+        self.trace_np.setRenderModeThickness(self.thickness)
+        self.trace_np.setLightOff()
+        self.trace_np.setTransparency(True)
 
     def _load_trajectory_from_json(self, filename : str | dict):
         if isinstance(filename, dict):

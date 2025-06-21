@@ -66,7 +66,10 @@ class Body:
                  label_on_top: bool = False,
                  label_scale: float = 0.4,
                  material: Material = None,
-                 is_sun: bool = False):
+                 is_sun: bool = False,
+                 show_orbit_path: bool = True,
+                 trace_mode: bool = False,
+                 trace_dt: float = 2.0):
         """Initializes a celestial body with various visual and physical properties.
 
         Args:
@@ -113,6 +116,10 @@ class Body:
         self.label_scale = label_scale
         self.trace_color = trace_color
         self.spline_mode = spline_mode  # "linear" or "cubic"
+
+        self.show_orbit_path = show_orbit_path
+        self.trace_mode = trace_mode
+        self.trace_dt = trace_dt
 
         self.num_segments = num_segments
         self.time_step = time_step
@@ -199,7 +206,9 @@ class Body:
                              orbit_json = orbit_json,
                              num_segments = self.num_segments,
                              time_step = self.time_step,
-                            )
+                             show_orbit_path = self.show_orbit_path,
+                             trace_mode = self.trace_mode,
+                             trace_dt = self.trace_dt)
         else:
             self.path = None
             # draw trajectory using the fading trace
@@ -614,6 +623,9 @@ class Body:
         #et = task.time
         # et = self.parent.sim_time if self.parent.use_slider_time else task.time
         et = self.parent.get_et(task)
+
+        if self.path:
+            self.path.update_trace(et)
 
         # Skip updates for sites    ---- this needs to be moved somewhere else....
         if self.__class__.__name__ != 'Site':
