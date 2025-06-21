@@ -21,6 +21,7 @@ from .utilities import *
 from .bodies import Body
 from .orbit import Orbit
 from .sites import Site
+from .antipode import BodyToBodyArrow
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
@@ -350,6 +351,9 @@ class EarthOrbitApp(ShowBase):
             draw_3d_axes=True
         )
 
+        # lets add the moon antipode
+        self.earth_moon_arrow = BodyToBodyArrow(self, self.moon, self.earth, extension=1.5, color=(1,0.5,0,1), label_text="Moon Antipode")
+
         # note: we need a way to disable body shadows if
         # the sun is not in the scene.
         self.sun = Body(
@@ -384,6 +388,8 @@ class EarthOrbitApp(ShowBase):
                           marker_color=(1, 1, 1, 0.5),
                           trajectory_mode=0, #trace
                           )
+
+        self.mars_venus_arrow = BodyToBodyArrow(self, self.mars, self.venus, extension=1.5, color=(1,0,0,0.5), name='MarsVenusVector', label_text="Mars-Venus-Vector")
 
         venus_site = Site(parent=self, name='P1', label_scale=0.1, central_body=self.venus, lat_deg=40, radius = 0.01, radius_offset = 0.02, lon_deg=-105, color = (0, 0, 1, 1), trajectory_mode = 0, trace_color = (1, 0, 0, 1)) #, show_axes=True)
 
@@ -1303,10 +1309,8 @@ class EarthOrbitApp(ShowBase):
 
     def particles_orbit_task(self, task):
 
-        if self.paused:  # Check the pause flag
-            return Task.cont  # Skip updates if paused
-
         self.frame_count += 1
+
         # self.hud_text.setText(f"Frame: {self.frame_count}")
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         fps = globalClock.getAverageFrameRate()
@@ -1319,6 +1323,10 @@ class EarthOrbitApp(ShowBase):
                            f"CPU: {cpu:.1f}%"]
         self.hud_text.setText('\n'.join(text_to_display))
         # self.hud_text.setText(f"{now}\nFPS: {fps:.1f}")
+
+        if self.paused:  # Check the pause flag
+            return Task.cont  # Skip updates if paused
+
         for i, particle in enumerate(self.particles):
             r, inclination, angle0, speed = self.particle_params[i]
             angle = angle0 + self.get_et(task) * speed

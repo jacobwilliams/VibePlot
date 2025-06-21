@@ -9,6 +9,7 @@ from panda3d.core import (GeomVertexFormat,
                           GeomLines,
                           NodePath,
                           Vec3,
+                          Quat,
                           LineSegs,
                           Point3)
 import numpy as np
@@ -99,6 +100,73 @@ def create_arrow(shaft_length=4.0, shaft_radius=0.1, head_length=0.6, head_radiu
     # arrow_np.setBin('opaque', 10)
     arrow_np.setPos(0, 0, 0)  # by default, center at origin
 
+    return arrow_np
+
+def quat_from_to(v_from, v_to):
+    """Returns a quaternion that rotates v_from to v_to."""
+    v_from = v_from.normalized()
+    v_to = v_to.normalized()
+    dot = v_from.dot(v_to)
+    if dot > 0.99999:
+        return Quat.identQuat()
+    elif dot < -0.99999:
+        # 180 degree rotation around any orthogonal axis
+        ortho = Vec3(1, 0, 0) if abs(v_from.x) < 0.9 else Vec3(0, 1, 0)
+        axis = v_from.cross(ortho)
+        axis.normalize()
+        quat = Quat()
+        quat.setFromAxisAngle(180, axis)
+        return quat
+    else:
+        axis = v_from.cross(v_to)
+        if axis.length() == 0:
+            # v_from and v_to are parallel or anti-parallel
+            return Quat.identQuat()
+        axis.normalize()  # <-- Ensure axis is normalized!
+        angle = math.degrees(math.acos(dot))
+        quat = Quat()
+        quat.setFromAxisAngle(angle, axis)
+        return quat
+
+def create_arrow_with_endpoints(start, end, color=(1, 1, 0, 1), thickness=0.05, head_size=0.15):
+    """
+    Draws an arrow from start to end in 3D space using only Geom primitives.
+    - start, end: 3D points (Vec3 or tuple)
+    - color: RGBA tuple
+    - thickness: shaft thickness
+    - head_size: length of the arrow head (absolute, not fraction)
+    Returns: NodePath containing the arrow geometry.
+    """
+
+    start = Vec3(*start)
+    end = Vec3(*end)
+    direction = end - start
+    length = direction.length()
+    if length == 0:
+        return NodePath("empty_arrow")
+    direction.normalize()
+
+    # Arrow geometry parameters
+    shaft_length = length - head_size
+    if shaft_length < 0:
+        shaft_length = length * 0.7
+        head_size = length * 0.3
+
+    # Build arrow along +Y axis at origin
+    arrow_np = create_arrow(
+        shaft_length=shaft_length,
+        shaft_radius=thickness,
+        head_length=head_size,
+        head_radius=thickness * 2,
+        color=color
+    )
+
+    # direction is a normalized Vec3
+    y_axis = Vec3(0, 1, 0)
+    target_vec = (end - start).normalized()
+    quat = quat_from_to(y_axis, target_vec)
+    arrow_np.setQuat(quat)
+    arrow_np.setPos(start)
     return arrow_np
 
 def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):
