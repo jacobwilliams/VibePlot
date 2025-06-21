@@ -30,7 +30,7 @@ class BodyToBodyArrow:
         # Start the update task
         self.app.add_task(self.update_task, f"Update_{self.name}")
 
-    def update_task(self, task):
+    def update_task(self, et):
         # Get positions in render coordinates
         pos_a = self.body_a._body.getPos(self.app.render)
         pos_b = self.body_b._body.getPos(self.app.render)
@@ -83,5 +83,4 @@ class BodyToBodyArrow:
         if self.label_np:
             self.label_np.removeNode()
             self.label_np = None
-        if self.app.taskMgr.hasTaskNamed(f"Update_{self.name}"):
-            self.app.taskMgr.remove(f"Update_{self.name}")
+        self.app.remove_task(f"Update_{self.name}")

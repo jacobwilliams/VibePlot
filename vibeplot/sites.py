@@ -34,7 +34,7 @@ class Site(Body):
 
         if not show_orbit:
             # Remove the orbit task - sites don't orbit, they're fixed to the parent body
-            self.parent.taskMgr.remove(f"{self.name}OrbitTask")
+            self.parent.remove_task(f"{self.name}OrbitTask")
 
         # Attach this site's _rotator to the central body's _rotator
         self._rotator.reparentTo(central_body._rotator)

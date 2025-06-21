@@ -22,6 +22,7 @@ from .bodies import Body
 from .orbit import Orbit
 from .sites import Site
 from .antipode import BodyToBodyArrow
+from .manifold import Manifold
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
@@ -527,7 +528,7 @@ class EarthOrbitApp(ShowBase):
             self.particle_labels.append(label_np)
 
         self.labels_visible = True
-        self.accept("s", self.toggle_particle_labels)
+        self.accept("s", self.toggle_labels)
 
         # --- Connect some particles with lines ---
         self.connect_count = 5  # Number of particles to connect
@@ -565,8 +566,20 @@ class EarthOrbitApp(ShowBase):
         self.recenter_on_earth()  # start the animation centered on Earth
         self.setup_gui()  # set up the GUI buttons/slider/etc
 
+        # Example usage:
+        # mesh_history: shape (num_times, num_vertices, 3)
+        # faces: list of (i, j, k) triangle indices
+        # mesh_history = Manifold.load_mesh_history_from_file("models/manifold.json")
+        # manifold = Manifold(self, start_point=(0,0,0), mesh_history=mesh_history)  # faces not needed
+
+
         # test: turn off shadowing on the bodies:
         # self.toggle_sunlight_on_bodies(False)
+
+        self.add_task(self.hud_task, "HUDTask", nopause=True)
+
+        # start the main task:
+        self.taskMgr.add(self.main_task, 'MainTask')
 
     def toggle_sunlight_on_bodies(self, enable: bool = None):
         """
@@ -589,7 +602,7 @@ class EarthOrbitApp(ShowBase):
         self.sim_time = float(self.time_slider['value'])
         self.time_label["text"] = f"Time: {self.sim_time:.2f}"
 
-    def sim_time_update_task(self, task):
+    def sim_time_update_task(self, et):
         """Update the simulation time and GUI elements."""
         if not self.use_slider_time:
             if not self.paused:
@@ -768,10 +781,8 @@ class EarthOrbitApp(ShowBase):
                 view_distance = body.radius * 10.0
 
         # Remove any existing follow node or look-at tasks
-        if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
-            self.taskMgr.remove("UpdateFollowNodeTask")
-        if self.taskMgr.hasTaskNamed("UpdateCameraLookAtTask"):
-            self.taskMgr.remove("UpdateCameraLookAtTask")
+        self.remove_task("UpdateFollowNodeTask")
+        self.remove_task("UpdateCameraLookAtTask")
 
         self.stop_inertia()  # Stop any existing inertia
         self.trackball.node().setMat(Mat4())  # Reset matrix to identity
@@ -789,7 +800,7 @@ class EarthOrbitApp(ShowBase):
             # Parent the camera to the follow node
             self.camera.reparentTo(self.camera_follow_node)
 
-            def update_follow_node_task(task):
+            def update_follow_node_task(et):
                 if body_to_look_at:
                     current_body_pos = body._body.getPos(self.render)
                     current_target_pos = body_to_look_at._body.getPos(self.render)
@@ -800,7 +811,7 @@ class EarthOrbitApp(ShowBase):
                     current_body_pos = body._body.getPos(self.render)
                     self.camera_follow_node.setPos(current_body_pos)  # ← Only follow node
                 return Task.cont
-            self.add_task(update_follow_node_task, "UpdateFollowNodeTask")
+            self.add_task(update_follow_node_task, "UpdateFollowNodeTask", nopause=True)
 
         else:
             # Create a pivot that follows the body and rotates with it
@@ -815,7 +826,7 @@ class EarthOrbitApp(ShowBase):
 
             if body_to_look_at:
                 # Position camera at distance and add task to look at target
-                def update_camera_look_at_task(task):
+                def update_camera_look_at_task(et):
                     # Get target position relative to the body's rotator
                     target_world_pos = body_to_look_at._body.getPos(self.render)
                     body_world_pos = body._body.getPos(self.render)
@@ -833,7 +844,7 @@ class EarthOrbitApp(ShowBase):
                     self.camera.lookAt(target_local_pos)
                     return Task.cont
 
-                self.add_task(update_camera_look_at_task, "UpdateCameraLookAtTask")
+                self.add_task(update_camera_look_at_task, "UpdateCameraLookAtTask", nopause=True)
             else:
                 # Default behavior: position camera and look at body center
                 #self.camera.setPos(0, -view_distance, 0) # unnecesary?
@@ -871,10 +882,8 @@ class EarthOrbitApp(ShowBase):
         self.sim_time = MIN_TIME  # reset clock
 
         # Clean up tasks created by setup_body_fixed_frame
-        if self.taskMgr.hasTaskNamed("UpdateFollowNodeTask"):
-            self.taskMgr.remove("UpdateFollowNodeTask")
-        if self.taskMgr.hasTaskNamed("UpdateCameraLookAtTask"):
-            self.taskMgr.remove("UpdateCameraLookAtTask")
+        self.remove_task("UpdateFollowNodeTask")
+        self.remove_task("UpdateCameraLookAtTask")
 
         # Clean up camera follow node
         if hasattr(self, 'camera_follow_node'):
@@ -1078,7 +1087,8 @@ class EarthOrbitApp(ShowBase):
 
         return Task.cont
 
-    def toggle_particle_labels(self):
+    def toggle_labels(self):
+        """Toggle visibility of labels."""
         self.labels_visible = not self.labels_visible
         for label in self.particle_labels:
             if self.labels_visible:
@@ -1236,35 +1246,53 @@ class EarthOrbitApp(ShowBase):
         if self.record_movie:
             print("Recording started.")
             self.movie_writer = imageio.get_writer(self.movie_filename, fps=self.movie_fps, codec='libx264', format='ffmpeg')
-            self.add_task(self.movie_writer_task, "MovieWriterTask")
+            self.add_task(self.movie_writer_task, "MovieWriterTask", nopause=True)
         else:
             print("Recording stopped.")
             if self.movie_writer:
                 self.movie_writer.close()
                 self.movie_writer = None
-            if self.taskMgr.hasTaskNamed("MovieWriterTask"):
-                self.taskMgr.remove("MovieWriterTask")
+            self.remove_task("MovieWriterTask")
 
-    def add_task(self, task_func, name):
+    def main_task(self, task):
+        """Main task that runs all the others."""
+
+        # something wrong here... the switching between bodies isn't working?
+
+        et = self.get_et(task)
+
+        if not self.paused:
+            for _func, _, _ in self.task_list:
+                _func(et)
+        else:
+            # only run the ones that never pause:
+            for _func, _, _nopause in self.task_list:
+                if _nopause:
+                    _func(et)
+
+        return Task.cont
+
+    def remove_task(self, name: str):
+        self.task_list = [t for t in self.task_list if t[1] != name]
+
+    def add_task(self, task_func, name, nopause: bool = False):
         """Adds a task to the task manager with a unique name.
 
         Args:
             task_func (Callable): The function to be added as a task.
             name (str): The unique name of the task.
+            nopause (bool, optional): If True, the task will not pause when the scene is paused. Defaults to False.
 
         Returns:
             bool: True if the task was added successfully, False if the task already exists.
         """
-        if not self.taskMgr.hasTaskNamed(name):
-            self.taskMgr.add(task_func, name)
-            for _func, _name in self.task_list:
-                if name == _name:
-                    return True # we already have this one
-            self.task_list.append((task_func, name))  # keep a list
-            return True
-        else:
-            print(f"Task '{name}' already exists.")
-            return False
+
+        for _func, _name, _nopause in self.task_list:
+            if name == _name:
+                print(f'task "{name}" already exists, not adding again.')
+                return False # we already have this one
+        self.task_list.append((task_func, name, nopause))  # keep a list
+        return True
 
     def toggle_scene_animation(self):
         """Toggles the animation state of the scene.
@@ -1298,7 +1326,7 @@ class EarthOrbitApp(ShowBase):
         # Check if intersection is within the segment
         return (0 <= t1 <= 1) or (0 <= t2 <= 1)
 
-    def movie_writer_task(self, task):
+    def movie_writer_task(self, et):
         """Task to capture frames for movie recording."""
         if not self.record_movie or not self.movie_writer:
             return Task.done  # Stop the task if not recording
@@ -1314,7 +1342,7 @@ class EarthOrbitApp(ShowBase):
         """Returns the global simulation time."""
         return self.sim_time
 
-    def particles_orbit_task(self, task):
+    def hud_task(self, et):
 
         self.frame_count += 1
 
@@ -1329,14 +1357,30 @@ class EarthOrbitApp(ShowBase):
                            f"Mem: {mem_mb:.1f} MB",
                            f"CPU: {cpu:.1f}%"]
         self.hud_text.setText('\n'.join(text_to_display))
-        # self.hud_text.setText(f"{now}\nFPS: {fps:.1f}")
+
+    def particles_orbit_task(self, et):
+
+        # self.frame_count += 1
+
+        # # self.hud_text.setText(f"Frame: {self.frame_count}")
+        # now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # fps = globalClock.getAverageFrameRate()
+        # mem_mb = self.process.memory_info().rss / (1024 * 1024)
+        # cpu = self.process.cpu_percent()
+        # # elapsed_time = self.get_et(task)
+        # text_to_display = [f"FPS: {fps:.1f}",   # f"{now}",
+        #                    f"Frame: {self.frame_count}",
+        #                    f"Mem: {mem_mb:.1f} MB",
+        #                    f"CPU: {cpu:.1f}%"]
+        # self.hud_text.setText('\n'.join(text_to_display))
+        # # self.hud_text.setText(f"{now}\nFPS: {fps:.1f}")
 
         if self.paused:  # Check the pause flag
             return Task.cont  # Skip updates if paused
 
         for i, particle in enumerate(self.particles):
             r, inclination, angle0, speed = self.particle_params[i]
-            angle = angle0 + self.get_et(task) * speed
+            angle = angle0 + self.get_et() * speed
             x = r * math.cos(angle)
             y = r * math.sin(angle)
             z = 0

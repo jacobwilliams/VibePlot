@@ -306,8 +306,7 @@ class Body:
             else:
                 self._body.setShaderInput("sundir", LVector3(0, 0, 1))
             # Add/update the sun direction update task
-            if not self.parent.taskMgr.hasTaskNamed(f"Update{self.name}ShaderSunDir"):
-                self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
+            self.parent.add_task(self.update_earth_shader_sundir_task, f"Update{self.name}ShaderSunDir")
 
     def set_shadowed(self, enable: bool, sunlight_np=None):
         """
@@ -328,10 +327,9 @@ class Body:
                 self._body.clearTexture()
                 self._body.setTexture(self.day_tex, 1)
             # Remove the sundir update task if present
-            if self.parent.taskMgr.hasTaskNamed(f"Update{self.name}ShaderSunDir"):
-                self.parent.taskMgr.remove(f"Update{self.name}ShaderSunDir")
+            self.parent.remove_task(f"Update{self.name}ShaderSunDir")
 
-    def update_earth_shader_sundir_task(self, task):
+    def update_earth_shader_sundir_task(self, et):
         """Updates the shader's sun direction for the Earth.
 
         Args:
@@ -607,7 +605,7 @@ class Body:
         self.boundaries_np.setTwoSided(True)
         self.boundaries_np.setTransparency(True)
 
-    def orbit_task(self, task):
+    def orbit_task(self, et):
         """Updates the body's position, orientation, and trace during its orbit.
 
         Args:
@@ -617,12 +615,12 @@ class Body:
             Task: The continuation status of the task.
         """
 
-        if self.parent.paused:  # Check the pause flag
-            return Task.cont  # Skip updates if paused
+        # if self.parent.paused:  # Check the pause flag
+        #     return Task.cont  # Skip updates if paused
 
         #et = task.time
         # et = self.parent.sim_time if self.parent.use_slider_time else task.time
-        et = self.parent.get_et(task)
+        # et = self.parent.get_et(task)
 
         if self.path:
             self.path.update_trace(et)
@@ -801,7 +799,7 @@ class Body:
         # self.grid_np.setDepthOffset(2)
         self.grid_np.setDepthOffset(1)
 
-    def update_sunlight_direction(self, task):
+    def update_sunlight_direction(self, et):
         sun_pos = self._body.getPos(self.parent.render)
         self.parent.dlnp.setPos(sun_pos)  # Move the light to the Sun's position (optional for DirectionalLight)
         self.parent.dlnp.lookAt(0, 0, 0)  # Point at the scene center

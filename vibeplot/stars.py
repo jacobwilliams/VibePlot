@@ -83,7 +83,7 @@ class Stars():
         if sky_grid:
             self.draw_sky_grid(sphere_radius=self.star_sphere_radius)
 
-        self.parent.add_task(self.update_star_sphere, "UpdateStarSphere")
+        self.parent.add_task(self.update_star_sphere, "UpdateStarSphere", nopause=True)
 
     def add_stars(self, filename="models/Stars_HYGv3.txt", num_stars=100):
         """this one draws stars as spheres. this is not as efficient, but

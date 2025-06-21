@@ -542,12 +542,13 @@ class Orbit:
 
         return tube_np
 
-    def orbit_task(self, task):
+    def orbit_task(self, et):
         """Main orbit animation task (satellite moves smoothly along the path)."""
-        if self.parent.paused:
-            return Task.cont
 
-        et = self.parent.get_et(task)
+        # if self.parent.paused:
+        #     return Task.cont
+
+        # et = self.parent.get_et(task)
 
         if self.path:
             self.path.update_trace(et)
@@ -563,6 +564,8 @@ class Orbit:
         total_time = t_max - t_min
         t = (et * self.speed) % total_time + t_min if getattr(self, "trajectory_options", {}).get("loop", True) else min(et * self.speed + t_min, t_max)
 
+        #TODO: shouldn't this be in Path? ...
+
         # Find the segment
         for i in range(n - 1):
             if ts[i] <= t <= ts[i + 1]:
@@ -572,6 +575,9 @@ class Orbit:
         else:
             # If t is exactly at the end, use the last point
             pos = pts[-1]
+
+        # TODO: i think this should be the origin of the base frame?
+        # don't assuming there's a body at the center?
 
         sat_pos_base_frame = self.central_body._body.getPos(self.parent.render) + pos
         self.satellite.setPos(sat_pos_base_frame)
@@ -584,6 +590,8 @@ class Orbit:
         # Update groundtrack
         self._update_groundtrack(sat_pos_base_frame)
 
+        # note: need to move the label resizing into a separate task
+        # so it will still work when zooming when the scene is paused.
         if self.label_np:
             # Offset label above the satellite
             label_pos = sat_pos_base_frame + Point3(0, 0, self.satellite_radius * 2)
@@ -625,9 +633,8 @@ class Orbit:
         """Clean up the orbit"""
 
         # Remove the tasks
-        self.parent.taskMgr.remove(f"{self.name}OrbitTask")
-        if self.parent.taskMgr.hasTaskNamed(f"{self.name}PulsateOrbitLineTask"):
-            self.parent.taskMgr.remove(f"{self.name}PulsateOrbitLineTask")
+        self.parent.remove_task(f"{self.name}OrbitTask")
+        self.parent.remove_task(f"{self.name}PulsateOrbitLineTask")
 
         # Remove nodes
         if self.satellite:
