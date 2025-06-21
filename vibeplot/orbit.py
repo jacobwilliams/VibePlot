@@ -30,6 +30,8 @@ class Orbit:
                  groundtrack_length: int = 1000,
                  groundtrack_thickness: float = 2.0,
                  show_orbit_path: bool = True,
+                 trace_mode: bool = False,
+                 trace_dt: float = 2.0,
                  orbit_path_linestyle: int = 0,
                  num_segments: int = 100,
                  enable_shadow: bool = False,
@@ -37,6 +39,7 @@ class Orbit:
                  orbit_json: str = None,
                  time_step: float = None,
                  add_tube: bool = False):
+
         """
         Initialize an Orbit object representing a satellite or object orbiting a central body.
 
@@ -88,6 +91,8 @@ class Orbit:
         self.orbit_path_linestyle = orbit_path_linestyle  # 0: solid, 1: dashed
         self.groundtrack_thickness = groundtrack_thickness
         self.show_orbit_path = show_orbit_path
+        self.trace_mode = trace_mode
+        self.trace_dt = trace_dt
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -143,6 +148,8 @@ class Orbit:
                          inclination_deg = self.inclination_deg,
                          radius = self.radius,
                          show_orbit_path = self.show_orbit_path,
+                         trace_mode = self.trace_mode,
+                         trace_dt = self.trace_dt
                         )
         self.orbit_path_np = self.path.orbit_path_np   # for now do this to match old way
         self._orbit_path_pts = self.path._orbit_path_pts

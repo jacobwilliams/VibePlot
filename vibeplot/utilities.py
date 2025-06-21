@@ -128,7 +128,8 @@ def quat_from_to(v_from, v_to):
         quat.setFromAxisAngle(angle, axis)
         return quat
 
-def create_arrow_with_endpoints(start, end, color=(1, 1, 0, 1), thickness=0.05, head_size=0.15):
+def create_arrow_with_endpoints(start, end, color=(1, 1, 0, 1), thickness=0.05, head_size=0.15,
+                                label_text=None, label_color=(1,1,1,1), label_scale=0.3, always_on_top: bool = False):
     """
     Draws an arrow from start to end in 3D space using only Geom primitives.
     - start, end: 3D points (Vec3 or tuple)
@@ -167,6 +168,7 @@ def create_arrow_with_endpoints(start, end, color=(1, 1, 0, 1), thickness=0.05, 
     quat = quat_from_to(y_axis, target_vec)
     arrow_np.setQuat(quat)
     arrow_np.setPos(start)
+
     return arrow_np
 
 def create_sphere(radius=1.0, num_lat=16, num_lon=32, color=(1, 1, 1, 1)):

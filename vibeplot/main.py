@@ -269,6 +269,9 @@ class EarthOrbitApp(ShowBase):
             visibility_cone=False,
             groundtrack=False,
             orbit_path_linestyle = 2  # short dash
+            # show_orbit_path = False,  # TODO : some problem here when run past the time of the data
+            # trace_mode=True, # test
+            # trace_dt=2.0,    # test
         )
         self.json_orbit_2 = Orbit(
             parent=self,

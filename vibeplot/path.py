@@ -7,7 +7,7 @@ import bisect
 from scipy.interpolate import CubicSpline
 import numpy as np
 
-from .utilities import create_sphere, draw_path, simple_propagator
+from .utilities import create_sphere, draw_path, simple_propagator, create_arrow_with_endpoints
 
 
 class Path():
@@ -57,6 +57,11 @@ class Path():
         self.trajectory_colors = None
         self.trajectory_options = {}
         self._splines = None
+        self.dv_vectors = None
+        self.dv0 = None
+        self.dvf = None
+        self.dv_arrows = []
+
         if orbit_json:
             self._load_trajectory_from_json(orbit_json)
 
@@ -125,6 +130,29 @@ class Path():
         self.trajectory_times = ts
         self.trajectory_options = data.get("options", {})
 
+        # --- Delta-v vectors support ---
+        if all(k in data for k in ("dvx", "dvy", "dvz")):
+            dvx, dvy, dvz = data["dvx"], data["dvy"], data["dvz"]
+            assert len(dvx) == len(xs), "dvx must be same length as x"
+            assert len(dvy) == len(xs), "dvy must be same length as x"
+            assert len(dvz) == len(xs), "dvz must be same length as x"
+            self.dv_vectors = [Vec3(dx, dy, dz) for dx, dy, dz in zip(dvx, dvy, dvz)]
+            self._plot_dv_vectors()
+        if 'dv0' in data:
+            dv0 = data['dv0']
+            if isinstance(dv0, (list, tuple)) and len(dv0) == 3:
+                self.dv0 = Vec3(*dv0)
+                self._add_arrow(self.trajectory_points[0], self.dv0, scale=1.0, color=(0,1,0,1), thickness = 0.05)
+            else:
+                raise ValueError("dv0 must be a list or tuple of 3 values")
+        if 'dvf' in data:
+            dvf = data['dvf']
+            if isinstance(dvf, (list, tuple)) and len(dvf) == 3:
+                self.dvf = Vec3(*dvf)
+                self._add_arrow(self.trajectory_points[0], self.dvf, scale=1.0, color=(1,0,0,1), thickness = 0.05)
+            else:
+                raise ValueError("dvf must be a list or tuple of 3 values")
+
         if "colors" in data and len(data["colors"]) == len(xs):
             self.trajectory_colors = [tuple(c) for c in data["colors"]]
         else:
@@ -139,6 +167,35 @@ class Path():
             )
         else:
             self._splines = None
+
+    def _add_arrow(self, p, vec, scale, color, thickness):
+        """add an arrow to a point on the trajectory"""
+        if scale==0.0 or p.length()==0.0:
+            return
+        arrow = create_arrow_with_endpoints(
+            start=p,
+            end=p + vec * scale,
+            color=color,
+            thickness=thickness,
+            head_size=thickness * 2
+        )
+        arrow.reparentTo(self.parent.render)
+        arrow.setLightOff()
+        arrow.setTransparency(True)
+        self.dv_arrows.append(arrow)
+
+    def _plot_dv_vectors(self,
+                         scale: float = 1.0,
+                         color: tuple = (1,0,0,1),
+                         thickness: float = 0.05):
+        """Plot delta-v vectors as arrows at each trajectory point."""
+
+        if not self.dv_vectors or not self.trajectory_points:
+            return
+        for p, dv in zip(self.trajectory_points, self.dv_vectors):
+            if dv.length() == 0:
+                continue
+            self._add_arrow(p, dv, scale, color, thickness)
 
     def get_orbit_state(self, et: float):
         """Return position on the orbit.
@@ -230,3 +287,29 @@ class Path():
         if not self.show_orbit_path:
             orbit_np.hide()
         return orbit_np
+
+    def destroy(self):
+        """Clean up all NodePaths and references created by this Path."""
+
+        # Remove the main orbit path
+        if hasattr(self, 'orbit_path_np') and self.orbit_path_np:
+            self.orbit_path_np.removeNode()
+        # Remove the trace, if present
+        if hasattr(self, 'trace_np') and self.trace_np:
+            self.trace_np.removeNode()
+        # Remove delta-v arrows, if present
+        if hasattr(self, 'dv_arrows') and self.dv_arrows:
+            for arrow in self.dv_arrows:
+                if arrow:
+                    arrow.removeNode()
+
+        self.trace_np = None
+        self.orbit_path_np = None
+        self.trajectory_points = None
+        self.trajectory_times = None
+        self.trajectory_colors = None
+        self.dv_vectors = None
+        self.dv0 = None
+        self.dvf = None
+        self.dv_arrows = []
+        self._splines = None
