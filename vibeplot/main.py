@@ -566,12 +566,8 @@ class EarthOrbitApp(ShowBase):
         self.recenter_on_earth()  # start the animation centered on Earth
         self.setup_gui()  # set up the GUI buttons/slider/etc
 
-        # Example usage:
-        # mesh_history: shape (num_times, num_vertices, 3)
-        # faces: list of (i, j, k) triangle indices
-        # mesh_history = Manifold.load_mesh_history_from_file("models/manifold.json")
-        # manifold = Manifold(self, start_point=(0,0,0), mesh_history=mesh_history)  # faces not needed
-
+        # Example manifold:
+        self.manifold = Manifold(self, mesh="models/manifold_dv.json")
 
         # test: turn off shadowing on the bodies:
         # self.toggle_sunlight_on_bodies(False)
