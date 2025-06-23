@@ -88,6 +88,11 @@ class Manifold:
             mesh_history = np.array(mesh_history)
         return mesh_history
 
+    def set_color(self, color: tuple):
+        """Change the color of the manifold and redraw."""
+        self.color = color
+        self.draw_tube_mesh()
+
     def draw_tube_mesh(self):
         """Draw a tube mesh connecting corresponding points between time steps, with closed rings."""
         if self.mesh_np:

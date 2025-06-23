@@ -4,7 +4,7 @@ from direct.showbase.DirectObject import DirectObject
 import math
 import numpy as np
 
-from .utilities import create_arrow_with_endpoints, create_circle
+from .utilities import create_arrow_with_endpoints, create_circle, random_rgba
 
 LENGTH_FACTOR = 0.7  # size of the gizmo relative to the vector length
 
@@ -229,6 +229,14 @@ class DraggableVector(DirectObject):
                 # Rotate the vector using computed quaternion.
                 self.root_quat = self.root_quat * rotation
                 self.root.setQuat(self.root_quat)
+
+                # just a test to do something with the rotation
+                # in this case, change the color of the manifold
+                #hpr = self.root_quat.getHpr()
+                #ra = hpr[0] % 360
+                #dec = hpr[1] % 180 - 90
+                #self.parent.manifold.set_color((abs(ra/180), abs(dec/90), 0, 1))
+
         self.last_mouse = LPoint2f(mpos.getX(), mpos.getY())
         return task.cont
 
