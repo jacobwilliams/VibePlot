@@ -23,6 +23,7 @@ from .orbit import Orbit
 from .sites import Site
 from .antipode import BodyToBodyArrow
 from .manifold import Manifold
+from .draggable_vector import DraggableVector
 
 from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
                           GeomTriangles, NodePath, Vec3, Mat4,
@@ -33,6 +34,7 @@ from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Ge
                           Shader, Mat3, GeomPoints,
                           Quat, AntialiasAttrib, GeomVertexArrayFormat
                           )
+from panda3d.core import CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -137,12 +139,15 @@ class EarthOrbitApp(ShowBase):
         self.inertia_angular_speed = 0.0   # Angular speed in radians/sec
 
         # Add mouse handlers
-        self.accept("mouse1", self.stop_inertia)
-        self.accept("alt-mouse1", self.on_alt_mouse_down)  # Option/Alt key + mouse button
-        self.accept("option-mouse1", self.on_alt_mouse_down)  # Mac-specific
-        # self.accept("alt-mouse1-up", self.on_alt_mouse_up)
-        # self.accept("option-mouse1-up", self.on_alt_mouse_up) # Mac-specific
-        self.accept("time-mouse1-up", self.on_alt_mouse_up)
+        self._camera_events = [
+            ("mouse1", self.stop_inertia),
+            ("mouse2", self.stop_inertia),
+            ("alt-mouse1", self.on_alt_mouse_down),
+            ("option-mouse1", self.on_alt_mouse_down),
+            ("time-mouse1-up", self.on_alt_mouse_up),
+        ]
+        for event, handler in self._camera_events:
+            self.accept(event, handler)
 
         self.hud_text = OnscreenText(
             text="Frame: 0",
@@ -572,6 +577,26 @@ class EarthOrbitApp(ShowBase):
         # test: turn off shadowing on the bodies:
         # self.toggle_sunlight_on_bodies(False)
 
+        # Set up picking
+        self.picker = CollisionTraverser()
+        self.pq = CollisionHandlerQueue()
+        self.pickerNode = CollisionNode('mouseRay')
+        self.pickerNP = self.camera.attachNewNode(self.pickerNode)
+        self.pickerRay = CollisionRay()
+        self.pickerNode.addSolid(self.pickerRay)
+        self.pickerNode.setFromCollideMask(GeomNode.getDefaultCollideMask())
+        self.picker.addCollider(self.pickerNP, self.pq)
+
+        # add an example of a draggable vector:
+        self.my_vector = DraggableVector(self,
+                                         pos=(7,0,0),
+                                         direction=(1,1,1),
+                                         length=1.0,
+                                         thickness = 0.05,
+                                         head_size=0.2,
+                                         color=(1,0,0,1),
+                                         name="MyVector")
+
         self.add_task(self.hud_task, "HUDTask", nopause=True)
 
         # start the main task:
@@ -954,6 +979,9 @@ class EarthOrbitApp(ShowBase):
         self.mouse_dragged = False
 
     def stop_inertia(self, *args):
+        if getattr(self, "block_camera_events", False):
+            return  # Block camera pan if dragging arrow
+
         self.inertia_active = False
         if self.inertia_task:
             self.taskMgr.remove(self.inertia_task)

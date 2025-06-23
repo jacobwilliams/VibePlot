@@ -177,7 +177,7 @@ class Path():
             end=p + vec * scale,
             color=color,
             thickness=thickness,
-            head_size=thickness * 2
+            head_size=thickness * 3
         )
         arrow.reparentTo(self.parent.render)
         arrow.setLightOff()

@@ -324,3 +324,34 @@ def simple_propagator(radius: float, inclination_deg: float, et: float, speed: f
     y = radius * math.sin(angle) * math.cos(inclination)
     z = radius * math.sin(angle) * math.sin(inclination)
     return np.array([x, y, z])  #Point3(x, y, z)
+
+def create_circle(radius=1.0, color=(1,1,1,1), segments=64, axis='z', thickness=3):
+    """Create a 3D circle NodePath in the X-Y plane, or around another axis."""
+    vformat = GeomVertexFormat.getV3c4()
+    vdata = GeomVertexData('circle', vformat, Geom.UHStatic)
+    vertex = GeomVertexWriter(vdata, 'vertex')
+    color_writer = GeomVertexWriter(vdata, 'color')
+    for i in range(segments+1):
+        theta = 2 * np.pi * i / segments
+        x = radius * np.cos(theta)
+        y = radius * np.sin(theta)
+        vertex.addData3(x, y, 0)
+        color_writer.addData4f(*color)
+    lines = GeomLines(Geom.UHStatic)
+    for i in range(segments):
+        lines.addVertices(i, i+1)
+    geom = Geom(vdata)
+    geom.addPrimitive(lines)
+    node = GeomNode('circle')
+    node.addGeom(geom)
+    np_circle = NodePath(node)
+    np_circle.setRenderModeThickness(thickness)  # Use the new parameter
+    np_circle.setRenderModeThickness(3)
+    # Rotate to match axis
+    if axis == 'x':
+        np_circle.setHpr(0, 90, 0)
+    elif axis == 'y':
+        np_circle.setHpr(90, 0, 0)
+    np_circle.setLightOff()
+
+    return np_circle
