@@ -1,14 +1,16 @@
 
 import os
-import sys
-import json
 import math
-import csv
 import random
 import psutil
 import imageio
 import numpy as np
 import datetime
+
+from panda3d.core import (GeomNode, NodePath, Vec3, Mat4, Point2, Point3, AmbientLight, DirectionalLight,
+                          loadPrcFileData, LineSegs, WindowProperties, TextNode, Mat3, Quat, AntialiasAttrib,
+                          CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue)
+
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 from direct.task import Task
@@ -24,17 +26,7 @@ from .sites import Site
 from .antipode import BodyToBodyArrow
 from .manifold import Manifold
 from .draggable_vector import DraggableVector
-
-from panda3d.core import (GeomVertexFormat, GeomVertexData, GeomVertexWriter, Geom, GeomNode,
-                          GeomTriangles, NodePath, Vec3, Mat4,
-                          Point2, Point3, TextureStage, AmbientLight, DirectionalLight, LVector3, PointLight,
-                          loadPrcFileData, LineSegs,
-                          CardMaker, TransparencyAttrib,
-                          WindowProperties, TextNode,
-                          Shader, Mat3, GeomPoints,
-                          Quat, AntialiasAttrib, GeomVertexArrayFormat
-                          )
-from panda3d.core import CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue
+from .planes import Plane
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -468,38 +460,8 @@ class EarthOrbitApp(ShowBase):
                                         )
 
         if draw_plane:
-            # --- Equatorial plane (square, translucent) ---
-            plane_size = EARTH_RADIUS * 4.0  # Half-width of the square plane
-            plane_color = (0.2, 0.6, 1.0, 0.3)  # RGBA, mostly transparent blue
-            # Create the plane
-            cm = CardMaker("equatorial_plane")
-            cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
-            plane_np = self.render.attachNewNode(cm.generate())
-            plane_np.setPos(0, 0, 0)
-            plane_np.setHpr(0, -90, 0)  # Rotate from XZ to XY plane
-            plane_np.setTransparency(TransparencyAttrib.MAlpha)
-            plane_np.setColor(*plane_color)
-            # --- Gridlines on the plane ---
-            gridlines = LineSegs()
-            gridlines.setThickness(1.0)
-            grid_color = (1, 1, 1.0, 0.6)  # Slightly more visible
-            num_lines = 9  # Number of gridlines per axis
-            step = (2 * plane_size) / (num_lines - 1)
-            z = 0  # Equatorial plane at z=0
-            # Vertical lines (constant x)
-            for i in range(num_lines):
-                x = -plane_size + i * step
-                gridlines.setColor(*grid_color)
-                gridlines.moveTo(x, -plane_size, z)
-                gridlines.drawTo(x, plane_size, z)
-            # Horizontal lines (constant y)
-            for i in range(num_lines):
-                y = -plane_size + i * step
-                gridlines.setColor(*grid_color)
-                gridlines.moveTo(-plane_size, y, z)
-                gridlines.drawTo(plane_size, y, z)
-            grid_np = self.render.attachNewNode(gridlines.create())
-            grid_np.setTransparency(TransparencyAttrib.MAlpha)
+            # Draw equatorial plane
+            self.plane = Plane(self, radius=EARTH_RADIUS * 4.0, color=(0.2, 0.6, 1.0, 0.3))
 
         # Add a small sphere as the satellite
         self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))
