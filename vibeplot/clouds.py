@@ -13,7 +13,8 @@ class CloudLayer:
         opacity: float = 0.5,
         scale: float = 1.02,
         rotate_rate: float = 1.0,
-        name: str = "CloudLayer"
+        name: str = "CloudLayer",
+        setLightOff: bool = False
     ):
         """
         Creates a semi-transparent, rotating cloud layer around a body.
@@ -63,7 +64,8 @@ class CloudLayer:
         self.cloud_np.reparentTo(self.body_np)
         self.cloud_np.setTransparency(True)
         # self.cloud_np.setTwoSided(True)
-        self.cloud_np.setLightOff()
+        if setLightOff:
+            self.cloud_np.setLightOff()
         self.cloud_np.setShaderOff()
         self.cloud_np.setBin('transparent', 0)
         self.cloud_np.setDepthWrite(False)

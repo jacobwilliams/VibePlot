@@ -218,10 +218,11 @@ class EarthOrbitApp(ShowBase):
             color=(1, 1, 1, 1),
             draw_grid=True,
             draw_3d_axes=True,
-            day_tex="models/land_ocean_ice_cloud_2048.jpg",  # day with clouds
-            # day_tex="models/2k_earth_daymap.jpg",  # day without clouds
+            # day_tex="models/land_ocean_ice_cloud_2048.jpg",  # day with clouds
+            day_tex="models/2k_earth_daymap.jpg",  # day without clouds
             cloud_tex="models/2k_earth_clouds.jpg",   # test of separate cloud layer
-            cloud_opacity=0.5
+            cloud_opacity=0.5,
+            cloud_rotate_rate=0.3
         )
 
         # add a fire effect to the earth:
