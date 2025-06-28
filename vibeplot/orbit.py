@@ -32,6 +32,10 @@ class Orbit:
                  show_orbit_path: bool = True,
                  trace_mode: bool = False,
                  trace_dt: float = 2.0,
+                 draw_markers=False,
+                 marker_interval=10,
+                 marker_radius=0.05,
+                 marker_color=(1, 1, 1, 0.5),
                  orbit_path_linestyle: int = 0,
                  num_segments: int = 100,
                  enable_shadow: bool = False,
@@ -93,6 +97,10 @@ class Orbit:
         self.show_orbit_path = show_orbit_path
         self.trace_mode = trace_mode
         self.trace_dt = trace_dt
+        self.draw_markers = draw_markers
+        self.marker_interval = marker_interval
+        self.marker_radius = marker_radius
+        self.marker_color = marker_color
 
         # Visibility cone settings
         self.visibility_cone_enabled = visibility_cone
@@ -149,7 +157,11 @@ class Orbit:
                          radius = self.radius,
                          show_orbit_path = self.show_orbit_path,
                          trace_mode = self.trace_mode,
-                         trace_dt = self.trace_dt
+                         trace_dt = self.trace_dt,
+                         draw_markers=self.draw_markers,
+                         marker_interval=self.marker_interval,
+                         marker_radius=self.marker_radius,
+                         marker_color=self.marker_color
                         )
         self.orbit_path_np = self.path.orbit_path_np   # for now do this to match old way
         self._orbit_path_pts = self.path._orbit_path_pts

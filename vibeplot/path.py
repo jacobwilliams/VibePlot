@@ -28,6 +28,10 @@ class Path():
                  show_orbit_path: bool = True,  # test
                  trace_mode=False, # test
                  trace_dt=2.0,    # test
+                 draw_markers=False,
+                 marker_interval=10,
+                 marker_radius=0.05,
+                 marker_color=(1, 1, 1, 0.5)
                  ):
         """
         Initialize the Path object by loading trajectory data from a JSON file or dictionary.
@@ -50,6 +54,13 @@ class Path():
         self.trace_mode = trace_mode
         self.trace_dt = trace_dt
         self.trace_np = None  # NodePath for the trace
+
+        # markers:
+        self.draw_markers = draw_markers
+        self.marker_interval = marker_interval
+        self.marker_radius = marker_radius
+        self.marker_color = marker_color if marker_color is not None else color
+        self.marker_nodes = []
 
         # Initialize trajectory data
         self.trajectory_points = None
@@ -286,7 +297,28 @@ class Path():
         orbit_np.setTransparency(True)
         if not self.show_orbit_path:
             orbit_np.hide()
+
+        # Draw markers if enabled
+        if self.draw_markers:
+            self._draw_markers(pts)
+
         return orbit_np
+
+    def _draw_markers(self, pts):
+        # Remove old markers
+        for node in getattr(self, "marker_nodes", []):
+            node.removeNode()
+        self.marker_nodes = []
+        # Draw new markers [faster to only create once and copy]
+        if not hasattr(self, "_marker_model"):
+            self._marker_model = create_sphere(self.marker_radius, color=self.marker_color)
+        for i, pt in enumerate(pts):
+            if i % self.marker_interval == 0:
+                marker = self._marker_model.copyTo(self.parent.render)
+                marker.setPos(pt)
+                marker.setLightOff()
+                marker.setTransparency(True)
+                self.marker_nodes.append(marker)
 
     def destroy(self):
         """Clean up all NodePaths and references created by this Path."""

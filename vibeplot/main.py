@@ -335,7 +335,10 @@ class EarthOrbitApp(ShowBase):
                       enable_shadow=False,
                       satellite_radius=0.3,
                       visibility_cone=False,
-                      groundtrack=False)
+                      groundtrack=False,
+                      draw_markers=True,
+                      marker_interval=1,  # every point
+                      marker_radius=0.1)
             self.orbits.append(s)
 
         # put a site on the Earth:
