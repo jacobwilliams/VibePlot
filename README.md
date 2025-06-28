@@ -29,6 +29,10 @@ Keys:
  * 'shift-5' -- center on Site, in the base frame
  * '6' -- look at Mars from the surface of Venus
 
+### Documentation
+
+To generate html documentation: `pdoc ./vibeplot --docformat google`
+
 ### See also
 
 * [Panda3D](https://www.panda3d.org)

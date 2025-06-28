@@ -30,7 +30,8 @@ class Body:
     ```
 
     ### Notes
-        * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
+
+      * maybe add a uuid to the strings to we are sure they are unique (if bodies have the same names)
     """
 
     def __init__(self,
