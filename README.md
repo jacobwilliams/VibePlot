@@ -1,4 +1,4 @@
-Vibe coding 3D spacecraft trajectory graphics.
+Vibe coding 3D spacecraft trajectory graphics with Python.
 
 ### Example:
 
