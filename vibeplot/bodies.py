@@ -11,6 +11,7 @@ from .utilities import (create_sphere,
                         draw_path,
                         simple_propagator)
 from .path import Path
+from .clouds import CloudLayer
 
 EARTH_RADIUS = 2.0  # Default radius for Earth-like bodies, can be adjusted
 # ... need to avoid setting this here ...
@@ -70,7 +71,11 @@ class Body:
                  is_sun: bool = False,
                  show_orbit_path: bool = True,
                  trace_mode: bool = False,
-                 trace_dt: float = 2.0):
+                 trace_dt: float = 2.0,
+                 cloud_tex: str = None,
+                 cloud_opacity: float = 0.5,
+                 cloud_scale: float = 1.02,
+                 cloud_rotate_rate: float = 1.0):
         """Initializes a celestial body with various visual and physical properties.
 
         Args:
@@ -168,6 +173,19 @@ class Body:
         # self._body.show(BitMask32.bit(0))  # Show in shadow camera
         # # Make bodies receive shadows
         # self._body.setTag("shadow", "receiver")
+
+        self.cloud_layer = None
+        if cloud_tex is not None:
+            self.cloud_layer = CloudLayer(
+                parent=self.parent,
+                body_np=self._rotator,
+                radius=self.radius,
+                texture=cloud_tex,
+                opacity=cloud_opacity,
+                scale=cloud_scale,
+                rotate_rate=cloud_rotate_rate,
+                name=f"{self.name}_CloudLayer"
+            )
 
         # myMaterial = Material()
         # myMaterial.setShininess(100.0)  # Increase from 5.0 to make it much shinier
@@ -567,7 +585,7 @@ class Body:
         # Default: identity
         return np.eye(3)
 
-    def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.001, thickness: float = 1.2, color = (1, 1, 1, 0.5)):
+    def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.02, thickness: float = 1.2, color = (1, 1, 1, 0.5)):
         """Draws country boundaries on the body using a GeoJSON file.
 
         Args:
@@ -603,8 +621,7 @@ class Body:
 
         self.boundaries_np = self._body.attachNewNode(segs.create())
         self.boundaries_np.setLightOff()
-        self.boundaries_np.setTwoSided(True)
-        self.boundaries_np.setTransparency(True)
+        self.boundaries_np.setBin('transparent', 10)
 
     def orbit_task(self, et):
         """Updates the body's position, orientation, and trace during its orbit.
@@ -748,7 +765,7 @@ class Body:
 
         return Task.cont
 
-    def draw_lat_lon_grid(self, num_lat=10, num_lon=16, radius_pad=0.01, color=(1, 1, 1, 1), thickness=2.0):
+    def draw_lat_lon_grid(self, num_lat=10, num_lon=16, radius_pad=0.015, color=(1, 1, 1, 1), thickness=2.0):
         """Draws latitude and longitude grid lines on the body.
 
         Args:
@@ -796,9 +813,8 @@ class Body:
         self.grid_np = self._body.attachNewNode(grid.create())
         self.grid_np.setShaderOff()
         self.grid_np.setLightOff()
-        self.grid_np.setTwoSided(True)
-        # self.grid_np.setDepthOffset(2)
-        self.grid_np.setDepthOffset(1)
+        self.grid_np.setDepthOffset(3)
+        self.grid_np.setBin('transparent', 20)
 
     def update_sunlight_direction(self, et):
         sun_pos = self._body.getPos(self.parent.render)

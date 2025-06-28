@@ -7,7 +7,7 @@ import imageio
 import numpy as np
 import datetime
 
-from panda3d.core import (GeomNode, NodePath, Vec3, Mat4, Point2, Point3, AmbientLight, DirectionalLight,
+from panda3d.core import (GeomNode, NodePath, Vec3, Vec4, Mat4, Point2, Point3, AmbientLight, DirectionalLight,
                           loadPrcFileData, LineSegs, WindowProperties, TextNode, Mat3, Quat, AntialiasAttrib,
                           CollisionTraverser, CollisionNode, CollisionRay, CollisionHandlerQueue)
 
@@ -27,6 +27,7 @@ from .antipode import BodyToBodyArrow
 from .manifold import Manifold
 from .draggable_vector import DraggableVector
 from .planes import Plane
+from .fire import FireEffect
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -51,8 +52,16 @@ MAX_TIME = 100.0  # temp: this represents the max time of the mission [will be u
 class EarthOrbitApp(ShowBase):
     """A simple Panda3D application to visualize Earth and other celestial bodies."""
 
-    def __init__(self, parent_window=None, friction: float = 1.0, draw_plane : bool = False):
+    def __init__(self, parent_window=None,
+                 friction: float = 1.0,
+                 draw_plane : bool = False,
+                 enable_particles: bool = False):
+
         super().__init__()
+
+        self.enable_particles = enable_particles
+        if enable_particles:
+            self.enableParticles()   # for the fire effect
 
         self.task_list = []  # list of (task, name) tuples
 
@@ -202,14 +211,29 @@ class EarthOrbitApp(ShowBase):
             self,
             name="Earth",
             radius=EARTH_RADIUS,
-            day_tex="models/land_ocean_ice_cloud_2048.jpg",
             night_tex="models/2k_earth_nightmap.jpg",
             geojson_path="models/custom.geo.json",
             # geojson_path="models/combined-with-oceans-1970.json",
             lon_rotate=180.0,  # Rotate to match texture orientation
             color=(1, 1, 1, 1),
             draw_grid=True,
-            draw_3d_axes=True
+            draw_3d_axes=True,
+            day_tex="models/land_ocean_ice_cloud_2048.jpg",  # day with clouds
+            # day_tex="models/2k_earth_daymap.jpg",  # day without clouds
+            cloud_tex="models/2k_earth_clouds.jpg",   # test of separate cloud layer
+            cloud_opacity=0.5
+        )
+
+        # add a fire effect to the earth:
+        # [only if enable_particles = True]
+        self.fire_effect = FireEffect(
+            parent=self,
+            target_np=self.earth._rotator,  # or self._body, depending on your scene graph
+            radius=self.earth.radius,
+            scale=1.05,
+            texture="models/81310-orange-art-explosion-sprite-pixel-download-hq-png_400x400.png",  # Your fire sprite with alpha
+            color=Vec4(1, 0.5, 0.1, 1),
+            intensity=100.0
         )
 
         self.iss = Orbit(
@@ -352,7 +376,7 @@ class EarthOrbitApp(ShowBase):
             radius=MOON_RADIUS,
             texture="models/lroc_color_poles_1k.jpg",
             color=(1, 1, 1, 1),
-            draw_3d_axes=True
+            draw_3d_axes=True,
         )
 
         # lets add the moon antipode
@@ -372,7 +396,6 @@ class EarthOrbitApp(ShowBase):
                     trace_mode=True, # test
                     trace_dt=2.0,    # test
                  )
-
 
         self.mars = Body(
             self,
