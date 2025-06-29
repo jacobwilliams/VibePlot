@@ -76,7 +76,8 @@ class Body:
                  cloud_tex: str = None,
                  cloud_opacity: float = 0.8,
                  cloud_scale: float = 1.02,
-                 cloud_rotate_rate: float = 1.0):
+                 cloud_rotate_rate: float = 1.0,
+                 two_sided: bool = False):
         """Initializes a celestial body with various visual and physical properties.
 
         Args:
@@ -106,6 +107,8 @@ class Body:
             label_scale (float, optional): Scale of the label. Defaults to 0.4.
             material (Material, optional): Material properties for the body. Defaults to None.
             is_sun (bool, optional): Whether the body is the sun. Defaults to False.
+            two_sided (bool, optional): Whether the body is two-sided (meaning the texture is also
+                drawn on the inside of the sphere). Defaults to False.
         """
 
         self.name = name
@@ -127,6 +130,7 @@ class Body:
         self.show_orbit_path = show_orbit_path
         self.trace_mode = trace_mode
         self.trace_dt = trace_dt
+        self.two_sided = two_sided
 
         self.num_segments = num_segments
         self.time_step = time_step
@@ -153,6 +157,7 @@ class Body:
         self._body.setPos(0, 0, 0)
         self._body.setLightOff()
         self._body.setLight(self.parent.dlnp)
+        self._body.setTwoSided(self.two_sided)
         if texture is not None:
             tex = parent.loader.loadTexture(texture)
             self._body.setTexture(tex, 1)
