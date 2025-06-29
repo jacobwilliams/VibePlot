@@ -18,7 +18,7 @@ class Site(Body):
 
         self.central_body = central_body
         self.lat_deg = lat_deg
-        self.lon_deg = lon_deg
+        self.lon_deg = lon_deg + 180.0  # FIXME the textures are rotated?
         self.radius_offset = radius_offset
 
         # Compute position in central_body's local coordinates

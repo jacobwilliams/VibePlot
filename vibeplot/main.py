@@ -397,8 +397,8 @@ class EarthOrbitApp(ShowBase):
             self.orbits.append(s)
 
         # put a site on the Earth:
-        site_lat = 0.519 * RAD2DEG  # deg
-        site_lon = 1.665 * RAD2DEG  # radians
+        site_lat = 28.57  # deg
+        site_lon = -80.65  # deg
         self.site = Site(parent=self,
                          name = 'site',
                          central_body=self.earth,
@@ -479,7 +479,7 @@ class EarthOrbitApp(ShowBase):
                                    show_orbit_path=False, # don't show the orbit path
                                 )
 
-        self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=40, lon_deg=-105, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
+        self.moon_site = Site(parent=self, name = 'copernicus', central_body=self.moon, radius = 0.01, lat_deg=9.7, lon_deg=-20.1, label_scale = 0.1, color = (1, 1, 0, 1), draw_3d_axes=True, trace_color = (1, 1, 1, 1))
 
         # Add Apollo landing sites to the Moon
         apollo_sites = [
