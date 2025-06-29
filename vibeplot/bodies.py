@@ -468,7 +468,7 @@ class Body:
         elif self.name.lower() == "sun":
             sun_orbit_radius = EARTH_RADIUS * 10  # Distance from Earth center
             sun_orbit_speed = 0.7  # radians per second
-            return simple_propagator(sun_orbit_radius, 10.0, et, sun_orbit_speed)
+            return simple_propagator(sun_orbit_radius, 0.0, et, sun_orbit_speed)
 
         # Moon orbits Earth
         elif self.name.lower() == "moon":
