@@ -55,7 +55,7 @@ class EarthOrbitApp(ShowBase):
 
     def __init__(self, parent_window=None,
                  friction: float = 1.0,
-                 draw_plane : bool = True,
+                 draw_plane : bool = False,
                  enable_particles: bool = False,
                  shadow_buffer_size: int = 2048,
                  near_far: tuple = (1.0, 100.0),
