@@ -55,7 +55,7 @@ class EarthOrbitApp(ShowBase):
 
     def __init__(self, parent_window=None,
                  friction: float = 1.0,
-                 draw_plane : bool = False,
+                 draw_plane : bool = True,
                  enable_particles: bool = False,
                  shadow_buffer_size: int = 2048,
                  near_far: tuple = (1.0, 100.0),
@@ -417,6 +417,7 @@ class EarthOrbitApp(ShowBase):
             color=(1, 1, 1, 1),
             draw_3d_axes=True,
         )
+        plane = Plane(self.moon._body, radius=self.moon.radius * 2, color=(1,1,1,0.2))
 
         # lets add the moon antipode
         self.earth_moon_arrow = BodyToBodyArrow(self, self.moon, self.earth, extension=1.5, color=(1,0.5,0,1), label_text="Moon Antipode")
@@ -523,7 +524,7 @@ class EarthOrbitApp(ShowBase):
 
         if draw_plane:
             # Draw equatorial plane
-            self.plane = Plane(self, radius=EARTH_RADIUS * 4.0, color=(0.2, 0.6, 1.0, 0.3))
+            self.plane = Plane(self.render, radius=EARTH_RADIUS * 4.0, color=(0.2, 0.6, 1.0, 0.3))
 
         # Add a small sphere as the satellite
         self.satellite = create_sphere(radius=0.1, num_lat=24, num_lon=48, color=(1,0,0,1))

@@ -9,7 +9,8 @@ class Plane:
     This class provides a method to draw an equatorial plane with gridlines.
     """
 
-    def __init__(self, parent,
+    def __init__(self,
+                 parent,
                  radius: float,
                  color: tuple = (0.2, 0.6, 1.0, 0.3),
                  grid_color: tuple = (1.0, 1.0, 1.0, 0.6),
@@ -18,6 +19,7 @@ class Plane:
         """Equatorial plane (square, translucent)
 
         Args:
+            parent (NodePath): NodePath to attach the plane to (e.g., a body's _rotator or _body).
             radius (float): Half-width of the square plane
             color (tuple, optional): RGBA color of the plane. Defaults to a translucent blue.
             grid_color (tuple, optional): RGBA color of the gridlines. Defaults to white.
@@ -31,11 +33,17 @@ class Plane:
         # Create the plane
         cm = CardMaker("equatorial_plane")
         cm.setFrame(-plane_size, plane_size, -plane_size, plane_size)
-        plane_np = parent.render.attachNewNode(cm.generate())
+        plane_np = parent.attachNewNode(cm.generate())
         plane_np.setPos(0, 0, 0)
         plane_np.setHpr(0, -90, 0)  # Rotate from XZ to XY plane
         plane_np.setTransparency(TransparencyAttrib.MAlpha)
         plane_np.setColor(*plane_color)
+        plane_np.setTextureOff()
+        plane_np.setShaderOff()
+        plane_np.setLightOff()
+        plane_np.setTwoSided(True)
+        plane_np.setBin('fixed', 10)  # or 'transparent', 20
+
         # --- Gridlines on the plane ---
         gridlines = LineSegs()
         gridlines.setThickness(thickness)
@@ -53,5 +61,10 @@ class Plane:
             gridlines.setColor(*grid_color)
             gridlines.moveTo(-plane_size, y, z)
             gridlines.drawTo(plane_size, y, z)
-        grid_np = parent.render.attachNewNode(gridlines.create())
+        grid_np = parent.attachNewNode(gridlines.create())
+        grid_np.setTextureOff()
+        grid_np.setShaderOff()
+        grid_np.setLightOff()
+        grid_np.setTwoSided(True)
         grid_np.setTransparency(TransparencyAttrib.MAlpha)
+        grid_np.setBin('fixed', 11)  # or 'transparent', 21
