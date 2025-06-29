@@ -372,10 +372,13 @@ class Body:
         sun_dir_world = sun_np.getQuat(self.parent.render).getForward()
         # Get sun direction in this body's local space
         sun_dir_local = self._body.getQuat(self.parent.render).conjugate().xform(sun_dir_world)
-        # Optional: rotate by 180 deg around Z to match texture orientation
+        # Optional: rotate by 180 deg around Z to match texture orientation  FIXME
         rot180 = Mat3.rotateMatNormaxis(180, Vec3(0, 0, 1))
         sun_dir_local_rot = rot180.xform(sun_dir_local)
-        self._body.setShaderInput("sundir", sun_dir_local_rot)
+        #self._body.setShaderInput("sundir", sun_dir_local_rot)
+        # have to do this to get the z-axis flipped for the shader?
+        sun_dir_local_rot_flipped = Vec3(sun_dir_local_rot[0], sun_dir_local_rot[1], -sun_dir_local_rot[2])
+        self._body.setShaderInput("sundir", sun_dir_local_rot_flipped)
 
     def setup_body_fixed_camera(self, view_distance=None, follow_without_rotation=False, body_to_look_at=None):
         """Sets up the camera in this body's frame.
