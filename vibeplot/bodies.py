@@ -74,7 +74,7 @@ class Body:
                  trace_mode: bool = False,
                  trace_dt: float = 2.0,
                  cloud_tex: str = None,
-                 cloud_opacity: float = 0.5,
+                 cloud_opacity: float = 0.8,
                  cloud_scale: float = 1.02,
                  cloud_rotate_rate: float = 1.0):
         """Initializes a celestial body with various visual and physical properties.

@@ -490,10 +490,22 @@ class Orbit:
             self.groundtrack_node.setTransparency(True)
             self.groundtrack_node.setLightOff()
 
-    def add_orbit_tube(self, tube_radius=0.2, num_sides=12, color=(1, 1, 1, 0.2)):
+    def add_orbit_tube(self,
+                       tube_radius: float = 0.2,
+                       num_sides: int = 12,
+                       color: tuple = (1, 1, 1, 0.2)) -> NodePath:
         """
-        Draw a tube along the given path_points.
+        Draws a tube (cylindrical mesh) along the orbit path.
+
+        Args:
+            tube_radius (float, optional): Radius of the tube. Defaults to 0.2.
+            num_sides (int, optional): Number of sides for the tube cross-section (higher = smoother tube). Defaults to 12.
+            color (tuple, optional): RGBA color for the tube. Defaults to (1, 1, 1, 0.2).
+
+        Returns:
+            NodePath: The NodePath containing the tube geometry.
         """
+
         path_points = self._orbit_path_pts
         num_segments = len(path_points) - 1
         format = GeomVertexFormat.getV3n3c4()
@@ -543,24 +555,17 @@ class Orbit:
         node = GeomNode('orbit_tube')
         node.addGeom(geom)
         tube_np = self.parent.render.attachNewNode(node)
-
-        tube_np.setTransparency(True)
-        # tube_np.setTwoSided(True)
-        # tube_np.setBin('opaque', 20)
+        tube_np.setTransparency(TransparencyAttrib.M_alpha)
+        tube_np.setDepthWrite(False)
+        tube_np.setBin('transparent', 5)
+        tube_np.setDepthOffset(1)
         tube_np.setLightOff()
         tube_np.setShaderOff()
-
-        tube_np.setTransparency(TransparencyAttrib.M_alpha)
 
         return tube_np
 
     def orbit_task(self, et):
         """Main orbit animation task (satellite moves smoothly along the path)."""
-
-        # if self.parent.paused:
-        #     return Task.cont
-
-        # et = self.parent.get_et(task)
 
         if self.path:
             self.path.update_trace(et)
