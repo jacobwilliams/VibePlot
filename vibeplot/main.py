@@ -56,13 +56,34 @@ class EarthOrbitApp(ShowBase):
     def __init__(self, parent_window=None,
                  friction: float = 1.0,
                  draw_plane : bool = False,
-                 enable_particles: bool = False):
+                 enable_particles: bool = False,
+                 shadow_buffer_size: int = 2048,
+                 near_far: tuple = (1.0, 100.0),
+                 fov: tuple = (60.0, 60.0),
+                 star_database: str = "models/hygdata_v41.csv"):
+        """
+        Initializes the EarthOrbitApp, setting up the Panda3D scene, camera, lighting, GUI, and celestial bodies.
+
+        Args:
+            parent_window (optional): Handle to a parent window for embedding, or None to create a new window.
+            friction (float, optional): Dampening factor for inertial camera rotation (0 = no inertia, 1 = no friction). Defaults to 1.0.
+            draw_plane (bool, optional): Whether to draw the equatorial plane. Defaults to False.
+            enable_particles (bool, optional): Whether to enable particle effects (e.g., fire). Defaults to False.
+            shadow_buffer_size (int, optional): Resolution of the shadow map buffer for shadows. Defaults to 2048.
+            near_far (tuple, optional): Near and far clipping planes for the camera lens. Defaults to (1, 100). Adjust based on your scene scale.
+            fov (tuple, optional): Horizontal and vertical field of view (degrees) for the camera lens. Defaults to (60.0, 60.0).
+            star_database (str, optional): Path to the star database CSV file for rendering stars. Defaults to "models/hygdata_v41.csv".
+        """
 
         super().__init__()
 
         self.enable_particles = enable_particles
         if enable_particles:
             self.enableParticles()   # for the fire effect
+
+        self.shadow_buffer_size = shadow_buffer_size
+        self.near_far = near_far
+        self.fov = fov
 
         self.task_list = []  # list of (task, name) tuples
 
@@ -82,7 +103,7 @@ class EarthOrbitApp(ShowBase):
         self.curr_quat = None
 
         # Set horizontal and vertical FOV in degrees
-        self.camLens.setFov(60, 60)
+        self.camLens.setFov(*self.fov)
         # To make the view wider (fisheye effect), increase the FOV (e.g., 90).
         # To zoom in (narrower view), decrease the FOV (e.g., 30).
         # self.camLens.setNear(0.1)
@@ -98,8 +119,11 @@ class EarthOrbitApp(ShowBase):
             aspect = width / height
             self.camLens.setAspectRatio(aspect)
 
-        # self.star_sphere_np = self.render.attachNewNode("star_sphere")
-        self.stars = Stars(self, star_database="models/hygdata_v41.csv")
+        if star_database:
+            # self.star_sphere_np = self.render.attachNewNode("star_sphere")
+            self.stars = Stars(self, star_database="models/hygdata_v41.csv")
+        else:
+            self.stars = None
 
         # Initialize in base frame at startup
         self.setup_base_frame()
@@ -178,21 +202,15 @@ class EarthOrbitApp(ShowBase):
         self.dlnp = dlnp  # Store a reference for later use
 
         # Enable shadow mapping
-        self.render.setShaderAuto()
         self.render.setAntialias(AntialiasAttrib.MAuto)
         # Set up shadow mapping for your directional light
-        #self.dlnp.node().setShadowCaster(True, 2048, 2048)  # Enable shadows with 2048x2048 shadow map
-        self.dlnp.node().getLens().setNearFar(1, 100)  # Adjust based on your scene scale
-        self.dlnp.node().setShadowBufferSize(2048)  # Shadow buffer resolution (single value)
-        # Enable shadows globally
+        self.dlnp.node().getLens().setNearFar(*self.near_far)
+        self.dlnp.node().setShadowBufferSize(self.shadow_buffer_size)
         self.render.setShaderAuto()
 
         # Neutral ambient for the rest
         neutral_ambient = AmbientLight("neutral_ambient")
-        # neutral_ambient.setColor((0.3, 0.3, 0.4, 1))
-        # neutral_ambient.setColor((0.5, 0.5, 0.6, 1))  # Brighter, cooler
-        # neutral_ambient.setColor((0.85, 0.85, 0.85, 1))  # Brighter, cooler
-        neutral_ambient.setColor((0.3, 0.3, 0.4, 1))  # Increase from 0.2 to 0.3
+        neutral_ambient.setColor((0.3, 0.3, 0.4, 1))
         neutral_ambient_np = self.render.attachNewNode(neutral_ambient)
         self.render.setLight(neutral_ambient_np)
 
