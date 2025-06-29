@@ -9,6 +9,7 @@ from panda3d.core import (TextNode,
                           LineSegs,
                           Geom,
                           GeomVertexFormat,
+                          GeomVertexData,
                           GeomVertexWriter,
                           GeomPoints,
                           GeomNode,
@@ -76,7 +77,7 @@ class Stars():
 
         if star_database:
             self.add_stars(star_database, num_stars=500)
-            #self.add_stars_as_points(star_database, num_stars=200)
+            # self.add_stars_as_points(star_database, num_stars=500)
             if constellation_lines:
                 self.draw_constellations()
 
