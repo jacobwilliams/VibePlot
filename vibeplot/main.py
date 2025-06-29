@@ -181,7 +181,7 @@ class EarthOrbitApp(ShowBase):
         self.render.setShaderAuto()
         self.render.setAntialias(AntialiasAttrib.MAuto)
         # Set up shadow mapping for your directional light
-        self.dlnp.node().setShadowCaster(True, 2048, 2048)  # Enable shadows with 2048x2048 shadow map
+        #self.dlnp.node().setShadowCaster(True, 2048, 2048)  # Enable shadows with 2048x2048 shadow map
         self.dlnp.node().getLens().setNearFar(1, 100)  # Adjust based on your scene scale
         self.dlnp.node().setShadowBufferSize(2048)  # Shadow buffer resolution (single value)
         # Enable shadows globally
