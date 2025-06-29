@@ -11,5 +11,7 @@ from . import stars
 from . import utilities
 from . import planes
 from . import clouds
+from . import geodesics
 
 from . import fire
+

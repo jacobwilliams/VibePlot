@@ -28,6 +28,7 @@ from .manifold import Manifold
 from .draggable_vector import DraggableVector
 from .planes import Plane
 from .fire import FireEffect
+from .geodesics import GeodesicPath
 
 
 loadPrcFileData('', 'framebuffer-multisample 1')
@@ -237,6 +238,23 @@ class EarthOrbitApp(ShowBase):
             intensity=100.0
         )
         self.earth.plot_major_cities("models/major_cities.csv")
+
+        # Example points: (altitude, latitude, longitude)
+        points = [
+            (0, 0, -160),
+            (0, 34.0522,-118.2437),  # Los Angeles
+        ]
+        # To draw an open path:
+        geo_path = GeodesicPath(parent_np=self.earth._body, body_radius=self.earth.radius, points=points, closed=False, color=(0,0,1,1), thickness=3.0, lon_rotation=180) # for some reason, lon is 180 off [due to texture?] FIXME
+
+        points = [
+            (0, 0, 0),
+            (0, 10, 10),
+            (0, 0, 20),
+            (0, -10, 10)
+        ]
+        # To draw a closed path:
+        geo_path_closed = GeodesicPath(parent_np=self.earth._body, body_radius=self.earth.radius, points=points, closed=True, color=(0,1,0,1), thickness=2.0, lon_rotation=180) # for some reason, lon is 180 off [due to texture?] FIXME
 
         self.iss = Orbit(
             parent=self,
