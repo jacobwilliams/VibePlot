@@ -211,7 +211,7 @@ class EarthOrbitApp(ShowBase):
             self,
             name="Earth",
             radius=EARTH_RADIUS,
-            night_tex="models/2k_earth_nightmap.jpg",
+            night_tex="models/8k_earth_nightmap.jpg",
             geojson_path="models/custom.geo.json",
             # geojson_path="models/combined-with-oceans-1970.json",
             lon_rotate=180.0,  # Rotate to match texture orientation
@@ -219,8 +219,8 @@ class EarthOrbitApp(ShowBase):
             draw_grid=True,
             draw_3d_axes=True,
             # day_tex="models/land_ocean_ice_cloud_2048.jpg",  # day with clouds
-            day_tex="models/2k_earth_daymap.jpg",  # day without clouds
-            cloud_tex="models/2k_earth_clouds.jpg",   # test of separate cloud layer
+            day_tex="models/8k_earth_daymap.jpg",  # day without clouds
+            cloud_tex="models/8k_earth_clouds.jpg",   # test of separate cloud layer
             cloud_opacity=0.5,
             cloud_rotate_rate=0.3
         )
