@@ -236,6 +236,7 @@ class EarthOrbitApp(ShowBase):
             color=Vec4(1, 0.5, 0.1, 1),
             intensity=100.0
         )
+        self.earth.plot_major_cities("models/major_cities.csv")
 
         self.iss = Orbit(
             parent=self,

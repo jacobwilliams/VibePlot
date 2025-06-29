@@ -4,6 +4,7 @@ import json
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import Point3, Vec3, Mat3, Quat, LineSegs, TextNode, TextureStage, Shader, LVector3, Material, BitMask32
 from direct.task import Task
+import csv
 
 from .utilities import (create_sphere,
                         lonlat_to_xyz,
@@ -254,6 +255,7 @@ class Body:
                 label_np.setPos(0, 0, self.radius + 0.31)  # Slightly above the body
             label_np.setBillboardPointEye()
             label_np.setLightOff()
+
             self.body_label_np = label_np  # Store reference if you want to hide/show later
 
             if label_on_top:
@@ -584,6 +586,71 @@ class Body:
 
         # Default: identity
         return np.eye(3)
+
+    def plot_major_cities(self,
+                          cities_csv_path: str = "models/major_cities.csv",
+                          marker_radius: float = 0.02,
+                          marker_color=(1, 0, 0, 1),
+                          label_color=(1, 1, 1, 1),
+                          label_scale: float = 0.1):
+        """
+        Plots markers and city names for major cities on the body.
+
+        Args:
+            cities_csv_path (str): Path to a CSV file with columns: name,lat,lon
+            marker_radius (float, optional): Radius of the city marker spheres. Defaults to 0.04.
+            marker_color (tuple, optional): RGBA color for the city markers. Defaults to red.
+            label_color (tuple, optional): RGBA color for the city labels. Defaults to white.
+            label_scale (float, optional): Scale for the city name labels. Defaults to 0.18.
+        """
+        # Remove previous city markers/labels if present
+        if hasattr(self, "city_marker_nodes"):
+            for node in self.city_marker_nodes:
+                node.removeNode()
+        if hasattr(self, "city_label_nodes"):
+            for node in self.city_label_nodes:
+                node.removeNode()
+        self.city_marker_nodes = []
+        self.city_label_nodes = []
+
+        # Create a single marker model to copy for each city
+        base_marker = create_sphere(radius=marker_radius, num_lat=8, num_lon=16, color=marker_color)
+        base_marker.setLightOff()
+        base_marker.setTransparency(True)
+        base_marker.setTextureOff()
+        base_marker.setShaderOff()
+        base_marker.hide()  # Hide the base marker itself
+
+        # Read cities from CSV
+        with open(cities_csv_path, newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                name = row['name']
+                lat = float(row['lat'])
+                lon = float(row['lon']) + 180 # for some reason the texture map is rotated? TODO
+                x, y, z = lonlat_to_xyz(lon, lat, self.radius + 0.01)
+
+                # Copy the base marker for this city
+                marker = base_marker.copyTo(self._body)
+                marker.setPos(x, y, z)
+                marker.show()
+                self.city_marker_nodes.append(marker)
+
+                # Create label
+                label_node = TextNode(f"city_label_{name}")
+                label_node.setText(name)
+                label_node.setTextColor(*label_color)
+                label_node.setAlign(TextNode.ACenter)
+                label_np = self._body.attachNewNode(label_node)
+                # Offset label above marker
+                label_np.setPos(x, y, z + marker_radius * 2.2)
+                label_np.setScale(label_scale)
+                label_np.setBillboardPointEye()
+                label_np.setLightOff()
+                label_np.setTransparency(True)
+                label_np.setTextureOff()
+                label_np.setShaderOff()
+                self.city_label_nodes.append(label_np)
 
     def draw_country_boundaries(self, geojson_path : str, lon_rotate : float = 0.0, radius_pad : float = 0.02, thickness: float = 1.2, color = (1, 1, 1, 0.5)):
         """Draws country boundaries on the body using a GeoJSON file.
