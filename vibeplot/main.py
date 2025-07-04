@@ -1,4 +1,3 @@
-
 import os
 import math
 import random
@@ -75,7 +74,24 @@ class EarthOrbitApp(ShowBase):
             star_database (str, optional): Path to the star database CSV file for rendering stars. Defaults to "models/hygdata_v41.csv".
         """
 
+        # Configure window properties for embedding before calling super().__init__()
+        if parent_window is not None:
+            from panda3d.core import WindowProperties
+            self.embedded_mode = True
+            # Configure for embedding - ShowBase will handle this automatically
+            # when we call super().__init__() after setting up the config
+        else:
+            self.embedded_mode = False
+
         super().__init__()
+
+        # Apply window properties after initialization if embedding
+        if parent_window is not None:
+            props = WindowProperties()
+            props.setParentWindow(parent_window)
+            props.setOrigin(0, 0)
+            props.setSize(800, 600)  # Default size, will be resized by parent
+            self.win.requestProperties(props)
 
         self.enable_particles = enable_particles
         if enable_particles:
